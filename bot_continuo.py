@@ -28,18 +28,21 @@ def enviar_a_telegram(mensaje):
         return {}
 
 def obtener_ultimo_tweet_directo():
+    # Lista ampliada de instancias espejo públicas para mayor estabilidad
     instancias = [
         f"https://nitter.poast.org/{X_USERNAME}",
-        f"https://nitter.privacydev.net/{X_USERNAME}"
+        f"https://nitter.privacydev.net/{X_USERNAME}",
+        f"https://nitter.catsarch.com/{X_USERNAME}",
+        f"https://nitter.perennialte.ch/{X_USERNAME}"
     ]
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
 
     for url in instancias:
         try:
-            res = requests.get(url, headers=headers, timeout=8)
+            res = requests.get(url, headers=headers, timeout=6)
             if res.status_code == 200:
                 soup = BeautifulSoup(res.text, "html.parser")
                 tweet_container = soup.find("div", class_="timeline-item")
@@ -70,7 +73,7 @@ def verificar_cuenta():
     tweet = obtener_ultimo_tweet_directo()
     
     if not tweet:
-        print("No se pudo obtener la información de X en este intento. Reintentando...", flush=True)
+        print("No se pudo obtener la información de X en este intento (instancias ocupadas). Reintentando...", flush=True)
         return
 
     guid_actual = tweet["id"]
