@@ -1,4 +1,4 @@
-﻿import feedparser
+import feedparser
 import requests
 import os
 import time
@@ -12,7 +12,7 @@ def obtener_ultimo_id():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, "r") as f:
             return f.read().strip()
-    return ""
+    return None  # Retorna None si el archivo no existe (ej. reinicio de Render)
 
 def guardar_ultimo_id(guid):
     with open(STATE_FILE, "w") as f:
@@ -41,6 +41,12 @@ def verificar_feed():
     guid_actual = getattr(ultimo_item, "id", ultimo_item.link)
     
     ultimo_guardado = obtener_ultimo_id()
+
+    # Si es la primera vez o Render reinició el contenedor (archivo borrado)
+    if ultimo_guardado is None:
+        guardar_ultimo_id(guid_actual)
+        print("Iniciando estado: último tweet registrado silenciosamente para evitar duplicados en reinicios.")
+        return
 
     if guid_actual != ultimo_guardado:
         titulo = ultimo_item.title
