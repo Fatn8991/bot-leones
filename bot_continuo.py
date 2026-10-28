@@ -30,11 +30,11 @@ def enviar_a_telegram(mensaje):
     return response.json()
 
 def verificar_feed():
-    print("Verificando nuevas jugadas...")
+    print("Verificando nuevas jugadas...", flush=True)
     feed = feedparser.parse(RSS_URL)
     
     if not feed.entries:
-        print("El feed RSS está vacío en este momento.")
+        print("El feed RSS está vacío en este momento.", flush=True)
         return
 
     ultimo_item = feed.entries[0]
@@ -45,7 +45,7 @@ def verificar_feed():
     # Si es la primera vez o Render reinició el contenedor (archivo borrado)
     if ultimo_guardado is None:
         guardar_ultimo_id(guid_actual)
-        print("Iniciando estado: último tweet registrado silenciosamente para evitar duplicados en reinicios.")
+        print("Iniciando estado: último tweet registrado silenciosamente para evitar duplicados en reinicios.", flush=True)
         return
 
     if guid_actual != ultimo_guardado:
@@ -57,19 +57,19 @@ def verificar_feed():
         resultado = enviar_a_telegram(mensaje)
         if resultado.get("ok"):
             guardar_ultimo_id(guid_actual)
-            print("¡Publicado en Telegram al instante!")
+            print("¡Publicado en Telegram al instante!", flush=True)
         else:
-            print("Error al publicar en Telegram:", resultado)
+            print("Error al publicar en Telegram:", resultado, flush=True)
     else:
-        print("Sin novedades recientes.")
+        print("Sin novedades recientes.", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot continuo para Telegram...")
+    print("Iniciando bot continuo para Telegram...", flush=True)
     while True:
         try:
             verificar_feed()
         except Exception as e:
-            print("Error en la ejecución:", e)
+            print("Error en la ejecución:", e, flush=True)
         
         # Revisa cada 60 segundos
         time.sleep(60)
