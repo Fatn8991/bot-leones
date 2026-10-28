@@ -1,13 +1,15 @@
-import feedparser
 import requests
+from bs4 import BeautifulSoup
 import os
 import time
 
-RSS_URL = "https://rss.app/feeds/aYipD5t5Wa5yhqo9.xml"
+# Usuario exacto de X/Twitter sin el @
+X_USERNAME = "leones_cbb"
+
+# Variables traídas desde Render
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-# Variable global en memoria para guardar el último tweet procesado
 ultimo_guid_memoria = None
 
 def enviar_a_telegram(mensaje):
@@ -18,53 +20,86 @@ def enviar_a_telegram(mensaje):
         "parse_mode": "HTML",
         "disable_web_page_preview": False
     }
-    response = requests.post(url, json=payload)
-    return response.json()
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        return response.json()
+    except Exception as err:
+        print(f"Error al conectar con Telegram: {err}", flush=True)
+        return {}
 
-def verificar_feed():
-    global ultimo_guid_memoria
-    print("Verificando nuevas jugadas...", flush=True)
-    feed = feedparser.parse(RSS_URL)
+def obtener_ultimo_tweet_directo():
+    instancias = [
+        f"https://nitter.poast.org/{X_USERNAME}",
+        f"https://nitter.privacydev.net/{X_USERNAME}"
+    ]
     
-    if not feed.entries:
-        print("El feed RSS está vacío en este momento.", flush=True)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
+    for url in instancias:
+        try:
+            res = requests.get(url, headers=headers, timeout=8)
+            if res.status_code == 200:
+                soup = BeautifulSoup(res.text, "html.parser")
+                tweet_container = soup.find("div", class_="timeline-item")
+                if tweet_container:
+                    link_tag = tweet_container.find("a", class_="tweet-link")
+                    content_tag = tweet_container.find("div", class_="tweet-content")
+                    
+                    if link_tag and content_tag:
+                        path = link_tag.get("href", "")
+                        tweet_id = path.split("/")[-1].replace("#m", "")
+                        tweet_link = f"https://x.com/{X_USERNAME}/status/{tweet_id}"
+                        tweet_texto = content_tag.get_text().strip()
+                        
+                        return {
+                            "id": tweet_id,
+                            "texto": tweet_texto,
+                            "link": tweet_link
+                        }
+        except Exception:
+            continue
+
+    return None
+
+def verificar_cuenta():
+    global ultimo_guid_memoria
+    print("Escaneando la cuenta de los Leones en tiempo real...", flush=True)
+    
+    tweet = obtener_ultimo_tweet_directo()
+    
+    if not tweet:
+        print("No se pudo obtener la información de X en este intento. Reintentando...", flush=True)
         return
 
-    ultimo_item = feed.entries[0]
-    guid_actual = getattr(ultimo_item, "id", ultimo_item.link)
-    
-    print(f"-> ID actual en el RSS: {guid_actual}", flush=True)
+    guid_actual = tweet["id"]
+    print(f"-> ID extraído de X: {guid_actual}", flush=True)
     print(f"-> ID guardado en memoria: {ultimo_guid_memoria}", flush=True)
 
-    # Si es la primera vez que arranca el script en esta sesión
     if ultimo_guid_memoria is None:
         ultimo_guid_memoria = guid_actual
-        print("Iniciando estado en memoria: último tweet registrado silenciosamente para evitar duplicados.", flush=True)
+        print("Iniciando estado en memoria: último tweet anclado silenciosamente.", flush=True)
         return
 
-    # Si hay un tweet nuevo que no coincide con el de la memoria
     if guid_actual != ultimo_guid_memoria:
-        titulo = ultimo_item.title
-        link = ultimo_item.link
-        
-        mensaje = f"🦁 <b>¡Jugada / Tweet de los Leones!</b>\n\n{titulo}\n\n🔗 {link}"
+        mensaje = f"🦁 <b>¡Jugada / Tweet de los Leones!</b>\n\n{tweet['texto']}\n\n🔗 {tweet['link']}"
         
         resultado = enviar_a_telegram(mensaje)
         if resultado.get("ok"):
             ultimo_guid_memoria = guid_actual
-            print("¡Publicado en Telegram al instante!", flush=True)
+            print("¡Publicado en Telegram al instante sin intermediarios!", flush=True)
         else:
             print("Error al publicar en Telegram:", resultado, flush=True)
     else:
-        print("Sin novedades recientes (los IDs son idénticos).", flush=True)
+        print("Sin novedades recientes en X.", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot continuo en memoria para Telegram...", flush=True)
+    print("Iniciando motor de rastreo directo para Telegram...", flush=True)
     while True:
         try:
-            verificar_feed()
+            verificar_cuenta()
         except Exception as e:
-            print("Error en la ejecución:", e, flush=True)
+            print("Error en el ciclo principal:", e, flush=True)
         
-        # Revisa cada 60 segundos
-        time.sleep(60)
+        time.sleep(45)
