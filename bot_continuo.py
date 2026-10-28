@@ -32,42 +32,56 @@ def verificar_fxtwitter():
         res = requests.get(url, timeout=10)
         if res.status_code == 200:
             data = res.json()
-            tweets = data.get("tweets", [])
-            if not tweets and "user" in data:
-                tweets = data["user"].get("tweets", [])
             
+            # Verificamos de forma segura el formato de la respuesta
+            tweets = []
+            if isinstance(data, dict):
+                raw_tweets = data.get("tweets")
+                if isinstance(raw_tweets, list):
+                    tweets = raw_tweets
+                elif "user" in data and isinstance(data["user"], dict):
+                    user_tweets = data["user"].get("tweets")
+                    if isinstance(user_tweets, list):
+                        tweets = user_tweets
+                elif "tweet" in data and isinstance(data["tweet"], dict):
+                    tweets = [data["tweet"]]
+
             if tweets:
                 ultimo_tweet = tweets[0]
-                tweet_id = str(ultimo_tweet.get("id"))
-                tweet_texto = ultimo_tweet.get("text", "")
-                tweet_link = ultimo_tweet.get("url", f"https://x.com/{X_USERNAME}/status/{tweet_id}")
-                
-                print(f"-> ID actual encontrado: {tweet_id}", flush=True)
-                print(f"-> ID en memoria: {ultimo_guid_memoria}", flush=True)
+                if isinstance(ultimo_tweet, dict):
+                    tweet_id = str(ultimo_tweet.get("id", ""))
+                    tweet_texto = ultimo_tweet.get("text", "")
+                    tweet_link = ultimo_tweet.get("url", f"https://x.com/{X_USERNAME}/status/{tweet_id}")
+                    
+                    if not tweet_id:
+                        return
 
-                if ultimo_guid_memoria is None:
-                    ultimo_guid_memoria = tweet_id
-                    print("Estado inicial anclado en memoria silenciosamente.", flush=True)
-                    return
+                    print(f"-> ID actual encontrado: {tweet_id}", flush=True)
+                    print(f"-> ID en memoria: {ultimo_guid_memoria}", flush=True)
 
-                if tweet_id != ultimo_guid_memoria:
-                    mensaje = f"🦁 <b>¡Nuevo Tweet de los Leones!</b>\n\n{tweet_texto}\n\n🔗 {tweet_link}"
-                    resultado = enviar_a_telegram(mensaje)
-                    if resultado.get("ok"):
+                    if ultimo_guid_memoria is None:
                         ultimo_guid_memoria = tweet_id
-                        print("¡Publicado en Telegram al instante!", flush=True)
+                        print("Estado inicial anclado en memoria silenciosamente.", flush=True)
+                        return
+
+                    if tweet_id != ultimo_guid_memoria:
+                        mensaje = f"🦁 <b>¡Nuevo Tweet de los Leones!</b>\n\n{tweet_texto}\n\n🔗 {tweet_link}"
+                        resultado = enviar_a_telegram(mensaje)
+                        if resultado.get("ok"):
+                            ultimo_guid_memoria = tweet_id
+                            print("¡Publicado en Telegram al instante!", flush=True)
+                        else:
+                            print("Error al enviar a Telegram:", resultado, flush=True)
                     else:
-                        print("Error al enviar a Telegram:", resultado, flush=True)
-                else:
-                    print("Sin nuevos tweets por ahora.", flush=True)
-                return
+                        print("Sin nuevos tweets por ahora.", flush=True)
+                    return
                 
         print("La API respondió pero está sincronizando. Reintentando...", flush=True)
     except Exception as e:
         print(f"Error consultando FxTwitter: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando motor FxTwitter...", flush=True)
+    print("Iniciando motor FxTwitter blindado...", flush=True)
     while True:
         try:
             verificar_fxtwitter()
