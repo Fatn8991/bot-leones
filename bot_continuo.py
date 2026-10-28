@@ -4,8 +4,8 @@ import os
 import time
 
 RSS_URL = "https://rss.app/feeds/aYipD5t5Wa5yhqo9.xml"
-TELEGRAM_BOT_TOKEN = "9018075258:AAEz06iKUsEdQbJmxSPTem_3PGWwiMshckE"
-CHAT_ID = "-1001652831356"
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 STATE_FILE = "ultimo_tweet.txt"
 
 def obtener_ultimo_id():
