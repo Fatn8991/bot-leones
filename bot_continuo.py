@@ -12,7 +12,7 @@ def obtener_ultimo_id():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, "r") as f:
             return f.read().strip()
-    return None  # Retorna None si el archivo no existe (ej. reinicio de Render)
+    return None
 
 def guardar_ultimo_id(guid):
     with open(STATE_FILE, "w") as f:
@@ -42,10 +42,13 @@ def verificar_feed():
     
     ultimo_guardado = obtener_ultimo_id()
 
-    # Si es la primera vez o Render reinició el contenedor (archivo borrado)
+    # Imprimimos ambos en los logs para comparar qué está pasando
+    print(f"-> ID actual en el RSS: {guid_actual}", flush=True)
+    print(f"-> ID guardado en archivo: {ultimo_guardado}", flush=True)
+
     if ultimo_guardado is None:
         guardar_ultimo_id(guid_actual)
-        print("Iniciando estado: último tweet registrado silenciosamente para evitar duplicados en reinicios.", flush=True)
+        print("Iniciando estado: último tweet registrado silenciosamente.", flush=True)
         return
 
     if guid_actual != ultimo_guardado:
@@ -61,7 +64,7 @@ def verificar_feed():
         else:
             print("Error al publicar en Telegram:", resultado, flush=True)
     else:
-        print("Sin novedades recientes.", flush=True)
+        print("Sin novedades recientes (los IDs son idénticos).", flush=True)
 
 if __name__ == "__main__":
     print("Iniciando bot continuo para Telegram...", flush=True)
@@ -71,5 +74,4 @@ if __name__ == "__main__":
         except Exception as e:
             print("Error en la ejecución:", e, flush=True)
         
-        # Revisa cada 60 segundos
         time.sleep(60)
