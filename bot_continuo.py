@@ -1,17 +1,14 @@
-import feedparser
+import requests
 import os
 import time
 
-# Usamos RSSHub para obtener el feed directo de la cuenta sin bloqueos
-RSS_URL = "https://rsshub.app/twitter/user/leones_cbbc"
-
+X_USERNAME = "leones_cbbc"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 ultimo_guid_memoria = None
 
 def enviar_a_telegram(mensaje):
-    import requests
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
@@ -26,47 +23,55 @@ def enviar_a_telegram(mensaje):
         print(f"Error al conectar con Telegram: {err}", flush=True)
         return {}
 
-def verificar_feed():
+def verificar_cuenta_json():
     global ultimo_guid_memoria
-    print("Consultando el feed en tiempo real vía RSSHub...", flush=True)
+    print("Consultando la API directa de la cuenta...", flush=True)
     
-    feed = feedparser.parse(RSS_URL)
+    # Usamos un servicio de API ligero que extrae los tweets recientes en JSON
+    url_api = f"https://api.vxtwitter.com/{X_USERNAME}"
     
-    if not feed.entries:
-        print("El feed está cargando o no devolvió entradas todavía. Reintentando...", flush=True)
-        return
+    try:
+        res = requests.get(url_api, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            tweets = data.get("tweets", [])
+            
+            if tweets:
+                ultimo_tweet = tweets[0]
+                tweet_id = str(ultimo_tweet.get("tweetID"))
+                tweet_texto = ultimo_tweet.get("text", "")
+                tweet_link = f"https://x.com/{X_USERNAME}/status/{tweet_id}"
+                
+                print(f"-> ID actual encontrado: {tweet_id}", flush=True)
+                print(f"-> ID en memoria: {ultimo_guid_memoria}", flush=True)
 
-    ultimo_item = feed.entries[0]
-    guid_actual = getattr(ultimo_item, "id", ultimo_item.link)
-    
-    print(f"-> ID actual: {guid_actual}", flush=True)
-    print(f"-> ID en memoria: {ultimo_guid_memoria}", flush=True)
+                if ultimo_guid_memoria is None:
+                    ultimo_guid_memoria = tweet_id
+                    print("Estado inicial anclado en memoria silenciosamente.", flush=True)
+                    return
 
-    if ultimo_guid_memoria is None:
-        ultimo_guid_memoria = guid_actual
-        print("Estado inicial anclado en memoria silenciosamente.", flush=True)
-        return
-
-    if guid_actual != ultimo_guid_memoria:
-        titulo = ultimo_item.title
-        link = ultimo_item.link
-        
-        mensaje = f"🦁 <b>¡Nuevo Tweet de los Leones!</b>\n\n{titulo}\n\n🔗 {link}"
-        
-        resultado = enviar_a_telegram(mensaje)
-        if resultado.get("ok"):
-            ultimo_guid_memoria = guid_actual
-            print("¡Publicado en Telegram al instante!", flush=True)
-        else:
-            print("Error al enviar a Telegram:", resultado, flush=True)
-    else:
-        print("Sin nuevos tweets por ahora.", flush=True)
+                if tweet_id != ultimo_guid_memoria:
+                    mensaje = f"🦁 <b>¡Nuevo Tweet de los Leones!</b>\n\n{tweet_texto}\n\n🔗 {tweet_link}"
+                    
+                    resultado = enviar_a_telegram(mensaje)
+                    if resultado.get("ok"):
+                        ultimo_guid_memoria = tweet_id
+                        print("¡Publicado en Telegram al instante!", flush=True)
+                    else:
+                        print("Error al enviar a Telegram:", resultado, flush=True)
+                else:
+                    print("Sin nuevos tweets por ahora.", flush=True)
+                return
+                
+        print("La API respondió pero no devolvió tweets todavía. Reintentando...", flush=True)
+    except Exception as e:
+        print(f"Error consultando la API: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot definitivo con RSSHub...", flush=True)
+    print("Iniciando bot con API JSON directa...", flush=True)
     while True:
         try:
-            verificar_feed()
+            verificar_cuenta_json()
         except Exception as e:
             print("Error en el ciclo principal:", e, flush=True)
         
