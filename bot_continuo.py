@@ -1,15 +1,17 @@
-import requests
+import feedparser
 import os
 import time
-import re
 
-X_USERNAME = "leones_cbbc"
+# Usamos RSSHub para obtener el feed directo de la cuenta sin bloqueos
+RSS_URL = "https://rsshub.app/twitter/user/leones_cbbc"
+
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 ultimo_guid_memoria = None
 
 def enviar_a_telegram(mensaje):
+    import requests
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
@@ -24,46 +26,20 @@ def enviar_a_telegram(mensaje):
         print(f"Error al conectar con Telegram: {err}", flush=True)
         return {}
 
-def obtener_ultimo_tweet_directo():
-    # Usamos la API de lectura directa optimizada para extraer contenido web sin bloqueos
-    url_lector = f"https://r.jina.ai/https://x.com/{X_USERNAME}"
-    headers = {
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    }
-    try:
-        res = requests.get(url_lector, headers=headers, timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            content = data.get("data", {}).get("content", "")
-            
-            # Buscamos el ID del último tweet analizando los enlaces de estado en el contenido
-            match_id = re.search(r'status/(\d+)', content)
-            if match_id:
-                tweet_id = match_id.group(1)
-                tweet_link = f"https://x.com/{X_USERNAME}/status/{tweet_id}"
-                
-                return {
-                    "id": tweet_id,
-                    "link": tweet_link
-                }
-    except Exception as e:
-        print(f"Error consultando el lector directo: {e}", flush=True)
-        
-    return None
-
-def verificar_cuenta():
+def verificar_feed():
     global ultimo_guid_memoria
-    print("Escaneando X mediante lector directo en tiempo real...", flush=True)
+    print("Consultando el feed en tiempo real vía RSSHub...", flush=True)
     
-    tweet = obtener_ultimo_tweet_directo()
+    feed = feedparser.parse(RSS_URL)
     
-    if not tweet:
-        print("Reintentando conexión en el próximo ciclo...", flush=True)
+    if not feed.entries:
+        print("El feed está cargando o no devolvió entradas todavía. Reintentando...", flush=True)
         return
 
-    guid_actual = tweet["id"]
-    print(f"-> ID extraído: {guid_actual}", flush=True)
+    ultimo_item = feed.entries[0]
+    guid_actual = getattr(ultimo_item, "id", ultimo_item.link)
+    
+    print(f"-> ID actual: {guid_actual}", flush=True)
     print(f"-> ID en memoria: {ultimo_guid_memoria}", flush=True)
 
     if ultimo_guid_memoria is None:
@@ -72,7 +48,10 @@ def verificar_cuenta():
         return
 
     if guid_actual != ultimo_guid_memoria:
-        mensaje = f"🦁 <b>¡Nuevo Tweet de los Leones!</b>\n\n🔗 {tweet['link']}"
+        titulo = ultimo_item.title
+        link = ultimo_item.link
+        
+        mensaje = f"🦁 <b>¡Nuevo Tweet de los Leones!</b>\n\n{titulo}\n\n🔗 {link}"
         
         resultado = enviar_a_telegram(mensaje)
         if resultado.get("ok"):
@@ -84,10 +63,10 @@ def verificar_cuenta():
         print("Sin nuevos tweets por ahora.", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando motor maestro de rastreo en tiempo real...", flush=True)
+    print("Iniciando bot definitivo con RSSHub...", flush=True)
     while True:
         try:
-            verificar_cuenta()
+            verificar_feed()
         except Exception as e:
             print("Error en el ciclo principal:", e, flush=True)
         
