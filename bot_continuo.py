@@ -4,7 +4,7 @@ import os
 import time
 
 # Usuario exacto de X/Twitter sin el @
-X_USERNAME = "leones_cbb"
+X_USERNAME = "leones_cbbc"
 
 # Variables traídas desde Render
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
