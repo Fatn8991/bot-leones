@@ -6,7 +6,8 @@ X_USERNAME = "leones_cbbc"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-ultimo_guid_memoria = None
+ultimo_tweet_id_memoria = None
+ultima_jugada_id_memoria = None
 
 def enviar_a_telegram(mensaje):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -23,67 +24,76 @@ def enviar_a_telegram(mensaje):
         print(f"Error al conectar con Telegram: {err}", flush=True)
         return {}
 
-def verificar_fxtwitter():
-    global ultimo_guid_memoria
-    print("Consultando la API de FxTwitter...", flush=True)
+def verificar_fxtwitter_multimedia():
+    global ultimo_tweet_id_memoria
+    print("Consultando tweets multimedia de los Leones...", flush=True)
     url = f"https://api.fxtwitter.com/{X_USERNAME}"
     
     try:
         res = requests.get(url, timeout=10)
         if res.status_code == 200:
             data = res.json()
-            
             tweets = []
             if isinstance(data, dict):
                 raw_tweets = data.get("tweets")
                 if isinstance(raw_tweets, list):
                     tweets = raw_tweets
-                elif "user" in data and isinstance(data["user"], dict):
-                    user_tweets = data["user"].get("tweets")
-                    if isinstance(user_tweets, list):
-                        tweets = user_tweets
-                elif "tweet" in data and isinstance(data["tweet"], dict):
-                    tweets = [data["tweet"]]
 
-            if tweets:
-                ultimo_tweet = tweets[0]
-                if isinstance(ultimo_tweet, dict):
-                    tweet_id = str(ultimo_tweet.get("id", ""))
-                    tweet_texto = ultimo_tweet.get("text", "")
-                    tweet_link = ultimo_tweet.get("url", f"https://x.com/{X_USERNAME}/status/{tweet_id}")
-                    
-                    if not tweet_id:
-                        return
-
-                    print(f"-> ID actual encontrado: {tweet_id}", flush=True)
-                    print(f"-> ID en memoria: {ultimo_guid_memoria}", flush=True)
-
-                    if ultimo_guid_memoria is None:
-                        ultimo_guid_memoria = tweet_id
-                        print("Estado inicial anclado en memoria silenciosamente.", flush=True)
-                        return
-
-                    if tweet_id != ultimo_guid_memoria:
-                        mensaje = f"🦁 <b>¡Nuevo Tweet de los Leones!</b>\n\n{tweet_texto}\n\n🔗 {tweet_link}"
-                        resultado = enviar_a_telegram(mensaje)
-                        if resultado.get("ok"):
-                            ultimo_guid_memoria = tweet_id
-                            print("¡Publicado en Telegram al instante!", flush=True)
-                        else:
-                            print("Error al enviar a Telegram:", resultado, flush=True)
-                    else:
-                        print("Sin nuevos tweets por ahora.", flush=True)
-                    return
+            for tweet in tweets:
+                if not isinstance(tweet, dict):
+                    continue
                 
-        print("La API respondió pero está sincronizando. Reintentando...", flush=True)
+                tweet_id = str(tweet.get("id", ""))
+                if not tweet_id:
+                    continue
+
+                # Verificamos si contiene fotos, videos o galerías
+                media = tweet.get("media", {})
+                tiene_multimedia = bool(media and (media.get("photos") or media.get("videos") or media.get("mosaic")))
+
+                if tweet_id != ultimo_tweet_id_memoria:
+                    if ultimo_tweet_id_memoria is None:
+                        ultimo_tweet_id_memoria = tweet_id
+                        print(f"ID multimedia inicial fijado: {tweet_id}", flush=True)
+                        return
+
+                    if tiene_multimedia:
+                        tweet_texto = tweet.get("text", "")
+                        tweet_link = tweet.get("url", f"https://x.com/{X_USERNAME}/status/{tweet_id}")
+                        
+                        mensaje = f"🦁📺 <b>¡Nuevo contenido multimedia de los Leones!</b>\n\n{tweet_texto}\n\n🔗 {tweet_link}"
+                        resultado = enviar_a_telegram(mensaje)
+                        
+                        if resultado.get("ok"):
+                            ultimo_tweet_id_memoria = tweet_id
+                            print("¡Multimedia publicada en Telegram!", flush=True)
+                        break
+                    else:
+                        # Si es texto plano, avanzamos el puntero para no reevaluarlo
+                        ultimo_tweet_id_memoria = tweet_id
+                        break
     except Exception as e:
-        print(f"Error consultando FxTwitter: {e}", flush=True)
+        print(f"Error en FxTwitter multimedia: {e}", flush=True)
+
+def verificar_jugada_jugada():
+    global ultima_jugada_id_memoria
+    # Nota: Aquí podemos conectar directamente al endpoint de la API de la LVBP 
+    # o la fuente de datos que alimenta las jugadas de TuJonrón.
+    try:
+        # Ejemplo de consulta a una API de jugadas en tiempo real de la LVBP
+        # endpoint_lvbp = "https://api.lvbp.com/v1/games/live-feed" (o similar)
+        # res = requests.get(endpoint_lvbp, timeout=10)
+        # ... procesar jugada nueva ...
+        pass
+    except Exception as e:
+        print(f"Error consultando jugada a jugada: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando motor FxTwitter blindado...", flush=True)
+    print("Iniciando bot híbrido (Multimedia + Jugada a Jugada)...", flush=True)
     while True:
         try:
-            verificar_fxtwitter()
+            verificar_fxtwitter_multimedia()
+            verificar_jugada_jugada()
         except Exception as e:
             print("Error en el ciclo principal:", e, flush=True)
         
