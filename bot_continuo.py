@@ -60,7 +60,6 @@ def verificar_fxtwitter_inteligente():
                 media = tweet.get("media", {})
                 tiene_multimedia = bool(media and (media.get("photos") or media.get("videos") or media.get("mosaic")))
                 
-                # Palabras clave amplias enfocadas estrictamente en incidencias de juego y reportes
                 texto_lower = tweet_texto.lower()
                 es_jugada_o_marcador = any(palabra in texto_lower for palabra in [
                     "jonrón", "hr", "hit", "doble", "triple", "carrera", "anota", 
@@ -68,7 +67,6 @@ def verificar_fxtwitter_inteligente():
                     "ganando", "en vivo", "playball", "alineación", "final", "victoria"
                 ])
 
-                # Filtro optimizado: Publicamos si tiene contenido visual O si reporta una jugada/incidencia del juego
                 if tiene_multimedia or es_jugada_o_marcador:
                     tweet_link = tweet.get("url", f"https://x.com/{X_USERNAME}/status/{tweet_id}")
                     
@@ -83,7 +81,6 @@ def verificar_fxtwitter_inteligente():
                 else:
                     print(f"Tweet {tweet_id} omitido por filtro antispam.", flush=True)
 
-                # Actualizamos la memoria con el tweet más reciente procesado
                 ultimo_tweet_id_memoria = tweet_id
                 break
                 
@@ -93,7 +90,11 @@ def verificar_fxtwitter_inteligente():
         print(f"Error consultando FxTwitter: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot definitivo (X Multimedia + Jugadas Oficiales)...", flush=True)
+    print("Iniciando bot definitivo y enviando alerta de prueba...", flush=True)
+    # PRUEBA FORZADA AL ARRANCAR
+    prueba_res = enviar_a_telegram("🦁🚀 <b>¡El bot de los Leones del Caracas se ha conectado y está operativo!</b> Monitoreando X en tiempo real.")
+    print("Resultado de la prueba inicial:", prueba_res, flush=True)
+
     while True:
         try:
             verificar_fxtwitter_inteligente()
