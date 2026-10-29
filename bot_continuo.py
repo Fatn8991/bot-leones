@@ -3,14 +3,10 @@ import os
 import time
 
 X_USERNAME = "leones_cbbc"
-GAME_ID = "870056"  # ID del partido activo
-TUJONRON_API_URL = f"https://gameday.tujonron.com/live/game/{GAME_ID}.json"
-
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 ultimo_tweet_id_memoria = None
-ultima_jugada_id_memoria = None
 
 def enviar_a_telegram(mensaje):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -27,9 +23,9 @@ def enviar_a_telegram(mensaje):
         print(f"Error al conectar con Telegram: {err}", flush=True)
         return {}
 
-def verificar_fxtwitter_multimedia():
+def verificar_fxtwitter_inteligente():
     global ultimo_tweet_id_memoria
-    print("Consultando tweets multimedia de los Leones...", flush=True)
+    print("Consultando tweets oficiales de los Leones...", flush=True)
     url = f"https://api.fxtwitter.com/{X_USERNAME}"
     
     try:
@@ -50,84 +46,57 @@ def verificar_fxtwitter_multimedia():
                 if not tweet_id:
                     continue
 
+                # Evitamos procesar tweets ya leídos
+                if tweet_id == ultimo_tweet_id_memoria:
+                    break
+
+                if ultimo_tweet_id_memoria is None:
+                    ultimo_tweet_id_memoria = tweet_id
+                    print(f"ID inicial anclado en memoria: {tweet_id}", flush=True)
+                    return
+
+                # Analizamos el contenido del tweet
+                tweet_texto = tweet.get("text", "")
                 media = tweet.get("media", {})
                 tiene_multimedia = bool(media and (media.get("photos") or media.get("videos") or media.get("mosaic")))
-
-                if tweet_id != ultimo_tweet_id_memoria:
-                    if ultimo_tweet_id_memoria is None:
-                        ultimo_tweet_id_memoria = tweet_id
-                        print(f"ID multimedia inicial fijado: {tweet_id}", flush=True)
-                        return
-
-                    if tiene_multimedia:
-                        tweet_texto = tweet.get("text", "")
-                        tweet_link = tweet.get("url", f"https://x.com/{X_USERNAME}/status/{tweet_id}")
-                        
-                        mensaje = f"🦁📺 <b>¡Nuevo contenido multimedia de los Leones!</b>\n\n{tweet_texto}\n\n🔗 {tweet_link}"
-                        resultado = enviar_a_telegram(mensaje)
-                        
-                        if resultado.get("ok"):
-                            ultimo_tweet_id_memoria = tweet_id
-                            print("¡Multimedia publicada en Telegram!", flush=True)
-                        break
-                    else:
-                        ultimo_tweet_id_memoria = tweet_id
-                        break
-    except Exception as e:
-        print(f"Error en FxTwitter multimedia: {e}", flush=True)
-
-def verificar_jugada_jugada():
-    global ultima_jugada_id_memoria
-    print("Consultando jugada a jugada en vivo...", flush=True)
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        "Accept": "application/json"
-    }
-    
-    try:
-        res = requests.get(TUJONRON_API_URL, headers=headers, timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            
-            # Buscamos la lista de jugadas en la respuesta JSON
-            jugadas = data.get("plays") or data.get("playByPlay") or data.get("plays_list") or []
-            
-            if isinstance(data, list):
-                jugadas = data
-
-            if jugadas and isinstance(jugadas, list):
-                ultima_jugada = jugadas[0] # La jugada más reciente
                 
-                # Extraemos el identificador y texto de la jugada
-                jugada_id = str(ultima_jugada.get("id") or ultima_jugada.get("play_id") or hash(str(ultima_jugada)))
-                descripcion = ultima_jugada.get("description") or ultima_jugada.get("text") or ultima_jugada.get("title") or str(ultima_jugada)
-                inning = ultima_jugada.get("inning", "")
-                
-                if jugada_id != ultima_jugada_id_memoria:
-                    if ultima_jugada_id_memoria is None:
-                        ultima_jugada_id_memoria = jugada_id
-                        print(f"ID inicial de jugada anclado: {jugada_id}", flush=True)
-                        return
+                # Palabras clave para detectar jugadas o marcadores importantes en texto (sin spam)
+                texto_lower = tweet_texto.lower()
+                es_jugada_o_marcador = any(palabra in texto_lower for palabra in [
+                    "jonrón", "hr", "anota", "caracas", "lvbp", "marcador", 
+                    "out", "inning", "ganando", "en vivo", "playball"
+                ])
+
+                # Filtro antispam: Publicamos si tiene multimedia O si es una jugada/anuncio crucial del juego
+                if tiene_multimedia or es_jugada_o_marcador:
+                    tweet_link = tweet.get("url", f"https://x.com/{X_USERNAME}/status/{tweet_id}")
                     
-                    mensaje = f"⚾ <b>¡JUGADA EN VIVO!</b> ({inning})\n\n{descripcion}"
+                    icono = "🦁📺" if tiene_multimedia else "⚾📢"
+                    mensaje = f"{icono} <b>Actualización de los Leones:</b>\n\n{tweet_texto}\n\n🔗 {tweet_link}"
+                    
                     resultado = enviar_a_telegram(mensaje)
-                    
                     if resultado.get("ok"):
-                        ultima_jugada_id_memoria = jugada_id
-                        print("¡Jugada reportada a Telegram!", flush=True)
+                        print(f"¡Publicado en Telegram con éxito! (ID: {tweet_id})", flush=True)
+                    else:
+                        print("Error al enviar a Telegram:", resultado, flush=True)
                 else:
-                    print("Sin nuevas jugadas por ahora.", flush=True)
+                    print(f"Tweet {tweet_id} omitido por filtro antispam (sin multimedia ni jugada clave).", flush=True)
+
+                # Actualizamos la memoria con el tweet más reciente procesado
+                ultimo_tweet_id_memoria = tweet_id
+                break # Solo procesamos el más reciente del lote y salimos
+                
+        else:
+            print("La API respondió pero está sincronizando...", flush=True)
     except Exception as e:
-        print(f"Error consultando API TuJonron: {e}", flush=True)
+        print(f"Error consultando FxTwitter: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con motor doble (Multimedia X + Jugada a Jugada TuJonrón)...", flush=True)
+    print("Iniciando bot definitivo (Fase 1 - X Inteligente)...", flush=True)
     while True:
         try:
-            verificar_fxtwitter_multimedia()
-            verificar_jugada_jugada()
+            verificar_fxtwitter_inteligente()
         except Exception as e:
             print("Error en el ciclo principal:", e, flush=True)
         
-        time.sleep(30) # 30 segundos para mayor velocidad durante los juegos
+        time.sleep(30)
