@@ -25,7 +25,7 @@ def enviar_a_telegram(mensaje):
 
 def verificar_fxtwitter_inteligente():
     global ultimo_tweet_id_memoria
-    print("Consultando tweets oficiales de los Leones...", flush=True)
+    print("Consultando tweets oficiales y jugadas de los Leones...", flush=True)
     url = f"https://api.fxtwitter.com/{X_USERNAME}"
     
     try:
@@ -60,19 +60,20 @@ def verificar_fxtwitter_inteligente():
                 media = tweet.get("media", {})
                 tiene_multimedia = bool(media and (media.get("photos") or media.get("videos") or media.get("mosaic")))
                 
-                # Palabras clave para detectar jugadas o marcadores importantes en texto (sin spam)
+                # Palabras clave amplias enfocadas estrictamente en incidencias de juego y reportes
                 texto_lower = tweet_texto.lower()
                 es_jugada_o_marcador = any(palabra in texto_lower for palabra in [
-                    "jonrón", "hr", "anota", "caracas", "lvbp", "marcador", 
-                    "out", "inning", "ganando", "en vivo", "playball"
+                    "jonrón", "hr", "hit", "doble", "triple", "carrera", "anota", 
+                    "out", "inning", "ponche", "pitcher", "lanzador", "marcador", 
+                    "ganando", "en vivo", "playball", "alineación", "final", "victoria"
                 ])
 
-                # Filtro antispam: Publicamos si tiene multimedia O si es una jugada/anuncio crucial del juego
+                # Filtro optimizado: Publicamos si tiene contenido visual O si reporta una jugada/incidencia del juego
                 if tiene_multimedia or es_jugada_o_marcador:
                     tweet_link = tweet.get("url", f"https://x.com/{X_USERNAME}/status/{tweet_id}")
                     
-                    icono = "🦁📺" if tiene_multimedia else "⚾📢"
-                    mensaje = f"{icono} <b>Actualización de los Leones:</b>\n\n{tweet_texto}\n\n🔗 {tweet_link}"
+                    icono = "🦁📺" if tiene_multimedia else "⚾📊"
+                    mensaje = f"{icono} <b>Reporte de los Leones:</b>\n\n{tweet_texto}\n\n🔗 {tweet_link}"
                     
                     resultado = enviar_a_telegram(mensaje)
                     if resultado.get("ok"):
@@ -80,11 +81,11 @@ def verificar_fxtwitter_inteligente():
                     else:
                         print("Error al enviar a Telegram:", resultado, flush=True)
                 else:
-                    print(f"Tweet {tweet_id} omitido por filtro antispam (sin multimedia ni jugada clave).", flush=True)
+                    print(f"Tweet {tweet_id} omitido por filtro antispam.", flush=True)
 
                 # Actualizamos la memoria con el tweet más reciente procesado
                 ultimo_tweet_id_memoria = tweet_id
-                break # Solo procesamos el más reciente del lote y salimos
+                break
                 
         else:
             print("La API respondió pero está sincronizando...", flush=True)
@@ -92,7 +93,7 @@ def verificar_fxtwitter_inteligente():
         print(f"Error consultando FxTwitter: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot definitivo (Fase 1 - X Inteligente)...", flush=True)
+    print("Iniciando bot definitivo (X Multimedia + Jugadas Oficiales)...", flush=True)
     while True:
         try:
             verificar_fxtwitter_inteligente()
