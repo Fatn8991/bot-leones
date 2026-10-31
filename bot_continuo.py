@@ -8,12 +8,8 @@ X_USERNAME = "leones_cbbc"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-# Lista de instancias públicas de Nitter para que el bot salte a otra si una falla
-NITTER_INSTANCES = [
-    "https://nitter.privacydev.net",
-    "https://nitter.poast.org",
-    "https://nitter.unixlooters.xyz"
-]
+# URL de RSSHub optimizada para extraer el feed de X de forma estable
+RSS_URL = f"https://rsshub.app/twitter/user/{X_USERNAME}"
 
 ultimo_tweet_id_memoria = None
 
@@ -42,66 +38,53 @@ def enviar_a_telegram(mensaje, foto_url=None):
         print(f"Error al conectar con Telegram: {err}", flush=True)
         return {}
 
-def verificar_nitter_rss():
+def verificar_rss():
     global ultimo_tweet_id_memoria
+    print(f"Consultando RSSHub para @{X_USERNAME}...", flush=True)
     
-    feed = None
-    instancia_activa = ""
-    
-    # Probamos las instancias hasta que una responda con éxito
-    for base_url in NITTER_INSTANCES:
-        url_rss = f"{base_url}/{X_USERNAME}/rss"
-        try:
-            print(f"Probando instancia: {base_url}...", flush=True)
-            temp_feed = feedparser.parse(url_rss)
-            if temp_feed.entries:
-                feed = temp_feed
-                instancia_activa = base_url
-                break
-        except Exception:
-            continue
-
-    if not feed or not feed.entries:
-        print("Ninguna instancia de Nitter devolvió entradas en este ciclo.", flush=True)
-        return
-
     try:
-        entrada = feed.entries[0]
-        tweet_link = entrada.link
-        tweet_id = tweet_link.split("/")[-1].split("#")[0]
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        response = requests.get(RSS_URL, headers=headers, timeout=15)
         
-        if not tweet_id:
+        if response.status_code != 200:
+            print(f"Error al obtener el feed RSS. Código HTTP: {response.status_code}", flush=True)
             return
 
-        print(f"ID detectado: {tweet_id} (Instancia: {instancia_activa}) | Memoria: {ultimo_tweet_id_memoria}", flush=True)
+        feed = feedparser.parse(response.content)
+        
+        if not feed.entries:
+            print("No se encontraron entradas en el RSS.", flush=True)
+            return
 
+        entrada = feed.entries[0]
+        tweet_link = entrada.link
+        tweet_id = entrada.get("id", tweet_link)
+        
         if tweet_id == ultimo_tweet_id_memoria:
             print("Sin nuevas publicaciones.", flush=True)
             return
 
-        raw_content = entrada.get("summary", "")
+        print(f"¡Nuevo tuit detectado! ID: {tweet_id}", flush=True)
+
+        raw_content = entrada.get("summary", entrada.get("description", ""))
         soup = BeautifulSoup(raw_content, "html.parser")
         
+        # Extraer imagen adjunta si la publicación la incluye
         img_tag = soup.find("img")
         foto_url = None
         if img_tag and img_tag.get("src"):
             foto_url = img_tag["src"]
-            if foto_url.startswith("/"):
-                foto_url = f"{instancia_activa}{foto_url}"
 
         for img in soup.find_all("img"):
             img.decompose()
             
         tweet_texto = soup.get_text().strip()
 
-        # Ajustamos el enlace para que apunte directo a x.com en lugar de nitter si lo prefieres
-        x_real_link = tweet_link.replace(instancia_activa, "https://x.com")
-
-        mensaje = f"🦁⚾ <b>¡Actualización de los Leones!</b>\n\n{tweet_texto}\n\n🔗 <a href='{x_real_link}'>Ver publicación en X</a>"
+        mensaje = f"🦁⚾ <b>¡Actualización de los Leones!</b>\n\n{tweet_texto}\n\n🔗 <a href='{tweet_link}'>Ver publicación en X</a>"
         
         resultado = enviar_a_telegram(mensaje, foto_url=foto_url)
         if resultado.get("ok"):
-            print(f"¡Enviado con éxito al canal! (ID: {tweet_id})", flush=True)
+            print("¡Enviado con éxito al canal de Telegram!", flush=True)
         else:
             print("Error al enviar a Telegram:", resultado, flush=True)
 
@@ -111,12 +94,12 @@ def verificar_nitter_rss():
         print(f"Excepción al procesar el feed: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con rotación de instancias Nitter...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>¡Bot reiniciado y escaneando con respaldo de múltiples instancias!</b>")
+    print("Iniciando bot con motor RSSHub estable...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>¡Bot actualizado con el nuevo motor RSS estable!</b>")
 
     while True:
         try:
-            verificar_nitter_rss()
+            verificar_rss()
         except Exception as e:
             print("Error en el ciclo principal:", e, flush=True)
         
