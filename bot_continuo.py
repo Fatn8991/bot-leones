@@ -2,18 +2,6 @@ import requests
 import os
 import time
 import re
-from threading import Thread
-from flask import Flask
-
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot de Leones del Caracas activo 24/7 🦁⚾"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
 
 X_USERNAME = "leones_cbbc"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -66,7 +54,6 @@ def verificar_actualizacion():
         
         tweet_candidato = None
         for i, linea in enumerate(lineas):
-            # Búsqueda flexible de #LEO o #leo
             if "#LEO" in linea or "#leo" in linea:
                 texto_jugada = linea
                 if i > 0 and len(lineas[i-1]) > 5:
@@ -110,20 +97,13 @@ def verificar_actualizacion():
     except Exception as e:
         print(f"Excepción general en la verificación: {e}", flush=True)
 
-def bucle_bot():
-    print("Iniciando bucle de monitoreo blindado...", flush=True)
+if __name__ == "__main__":
+    print("Iniciando bot de jugadas en vivo...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>¡Bot activo y listo para transmitir el juego!</b>")
+
     while True:
         try:
             verificar_actualizacion()
         except Exception as err:
             print(f"Error atrapado en el bucle principal: {err}", flush=True)
         time.sleep(10)
-
-if __name__ == "__main__":
-    print("Iniciando servidor web y bot...", flush=True)
-    
-    t = Thread(target=bucle_bot)
-    t.daemon = True
-    t.start()
-    
-    run_flask()
