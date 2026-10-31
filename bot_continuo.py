@@ -15,7 +15,7 @@ def enviar_a_telegram(mensaje):
         "chat_id": CHAT_ID,
         "text": mensaje,
         "parse_mode": "HTML",
-        "disable_web_page_preview": True  # <-- Esto elimina la tarjeta grande de vista previa del enlace
+        "disable_web_page_preview": True
     }
     try:
         response = requests.post(url, json=payload, timeout=15)
@@ -27,16 +27,18 @@ def enviar_a_telegram(mensaje):
 
 def verificar_actualizacion():
     global ultimo_tweet_id_memoria
-    print(f"Buscando jugadas con #LEO para @{X_USERNAME}...", flush=True)
+    print(f"Buscando jugadas en tiempo real para @{X_USERNAME}...", flush=True)
     
-    url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}"
+    # Añadimos un parámetro de tiempo aleatorio para evitar que el conector entregue caché vieja
+    url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}"
     
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache'
         }
-        response = requests.get(url_api, headers=headers, timeout=20)
+        response = requests.get(url_api, headers=headers, timeout=15)
         
         if response.status_code != 200:
             print(f"Error HTTP del conector: {response.status_code}", flush=True)
@@ -61,10 +63,10 @@ def verificar_actualizacion():
                 break
 
         if not tweet_candidato:
-            print("No se encontraron jugadas nuevas con #LEO en este ciclo.", flush=True)
+            print("Sin nuevas jugadas en este ciclo.", flush=True)
             return
 
-        # Limpiamos URLs, etiquetas de imágenes y textos basura como fechas extrañas
+        # Limpieza de textos extraños y enlaces
         tweet_candidato = re.sub(r'https?://\S+', '', tweet_candidato)
         tweet_candidato = re.sub(r'\[Image[^\]]*\]\([^)]+\)', '', tweet_candidato)
         tweet_candidato = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}', '', tweet_candidato).strip()
@@ -76,15 +78,14 @@ def verificar_actualizacion():
         print(f"ID evaluado: {tweet_id} | Memoria previa: {ultimo_tweet_id_memoria}", flush=True)
 
         if tweet_id == ultimo_tweet_id_memoria:
-            print("Esta jugada ya fue publicada anteriormente.", flush=True)
+            print("Esta jugada ya fue publicada.", flush=True)
             return
 
-        # Mensaje limpio sin enlaces para evitar tarjetas de vista previa
         mensaje = f"🦁⚾ <b>¡Jugada en vivo!</b>\n\n{tweet_candidato}"
         
         resultado = enviar_a_telegram(mensaje)
         if resultado.get("ok"):
-            print("¡Jugada limpia enviada con éxito al canal!", flush=True)
+            print("¡Jugada enviada al instante!", flush=True)
             ultimo_tweet_id_memoria = tweet_id
         else:
             print("Telegram rechazó el envío.", flush=True)
@@ -93,9 +94,9 @@ def verificar_actualizacion():
         print(f"Excepción en la verificación: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con formato ultra limpio...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>¡Bot optimizado: solo texto de jugadas en vivo!</b>")
+    print("Iniciando bot ultra rápido...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>¡Bot sincronizado en tiempo real para el partido!</b>")
 
     while True:
         verificar_actualizacion()
-        time.sleep(30)
+        time.sleep(10)  # <-- Reducido a 10 segundos para máxima velocidad
