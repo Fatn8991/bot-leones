@@ -26,7 +26,7 @@ def enviar_a_telegram(mensaje):
 def verificar_fxtwitter_inteligente():
     global ultimo_tweet_id_memoria
     print("Consultando tweets oficiales y jugadas de los Leones...", flush=True)
-    url = f"https://api.fxtwitter.com/{X_USERNAME}"
+    url = f"https://fxtwitter.com/{X_USERNAME}"
     
     try:
         res = requests.get(url, timeout=10)
@@ -38,62 +38,66 @@ def verificar_fxtwitter_inteligente():
                 if isinstance(raw_tweets, list):
                     tweets = raw_tweets
 
-            for tweet in tweets:
-                if not isinstance(tweet, dict):
-                    continue
+            if not tweets:
+                print("No se encontraron tweets en la respuesta de la API.", flush=True)
+                return
+
+            # Tomamos el tuit más reciente (suele ser el primero de la lista)
+            tweet mas reciente
+            tweet_reciente = tweets[0]
+            if not isinstance(tweet_reciente, dict):
+                return
+
+            tweet_id = str(tweet_reciente.get("id", ""))
+            if not tweet_id:
+                return
+
+            print(f"Último ID detectado en X: {tweet_id} | ID en memoria: {ultimo_tweet_id_memoria}", flush=True)
+
+            # Si es el mismo de la memoria, no hacemos nada y esperamos
+            if tweet_id == ultimo_tweet_id_memoria:
+                print("No hay tweets nuevos desde la última revisión.", flush=True)
+                return
+
+            # Si es un tuit completamente nuevo, lo procesamos
+            tweet_texto = tweet_reciente.get("text", "")
+            media = tweet_reciente.get("media", {})
+            tiene_multimedia = bool(media and (media.get("photos") or media.get("videos") or media.get("mosaic")))
+            
+            texto_lower = tweet_texto.lower()
+            es_jugada_o_marcador = any(palabra in texto_lower for palabra in [
+                "jonrón", "hr", "hit", "doble", "triple", "carrera", "anota", 
+                "out", "inning", "ponche", "pitcher", "lanzador", "marcador", 
+                "ganando", "en vivo", "playball", "alineación", "final", "victoria"
+            ])
+
+            # Filtro optimizado
+            if tiene_multimedia or es_jugada_o_marcador:
+                tweet_link = tweet_reciente.get("url", f"https://x.com/{X_USERNAME}/status/{tweet_id}")
                 
-                tweet_id = str(tweet.get("id", ""))
-                if not tweet_id:
-                    continue
-
-                # Evitamos procesar tweets ya leídos
-                if tweet_id == ultimo_tweet_id_memoria:
-                    break
-
-                if ultimo_tweet_id_memoria is None:
-                    ultimo_tweet_id_memoria = tweet_id
-                    print(f"ID inicial anclado en memoria: {tweet_id}", flush=True)
-                    return
-
-                # Analizamos el contenido del tweet
-                tweet_texto = tweet.get("text", "")
-                media = tweet.get("media", {})
-                tiene_multimedia = bool(media and (media.get("photos") or media.get("videos") or media.get("mosaic")))
+                icono = "🦁📺" if tiene_multimedia else "⚾📊"
+                mensaje = f"{icono} <b>Reporte de los Leones:</b>\n\n{tweet_texto}\n\n🔗 {tweet_link}"
                 
-                texto_lower = tweet_texto.lower()
-                es_jugada_o_marcador = any(palabra in texto_lower for palabra in [
-                    "jonrón", "hr", "hit", "doble", "triple", "carrera", "anota", 
-                    "out", "inning", "ponche", "pitcher", "lanzador", "marcador", 
-                    "ganando", "en vivo", "playball", "alineación", "final", "victoria"
-                ])
-
-                if tiene_multimedia or es_jugada_o_marcador:
-                    tweet_link = tweet.get("url", f"https://x.com/{X_USERNAME}/status/{tweet_id}")
-                    
-                    icono = "🦁📺" if tiene_multimedia else "⚾📊"
-                    mensaje = f"{icono} <b>Reporte de los Leones:</b>\n\n{tweet_texto}\n\n🔗 {tweet_link}"
-                    
-                    resultado = enviar_a_telegram(mensaje)
-                    if resultado.get("ok"):
-                        print(f"¡Publicado en Telegram con éxito! (ID: {tweet_id})", flush=True)
-                    else:
-                        print("Error al enviar a Telegram:", resultado, flush=True)
+                resultado = enviar_a_telegram(mensaje)
+                if resultado.get("ok"):
+                    print(f"¡Publicado en Telegram con éxito! (ID: {tweet_id})", flush=True)
                 else:
-                    print(f"Tweet {tweet_id} omitido por filtro antispam.", flush=True)
+                    print("Error al enviar a Telegram:", resultado, flush=True)
+            else:
+                print(f"Tweet {tweet_id} omitido por filtro antispam (Sin multimedia ni palabras clave).", flush=True)
 
-                ultimo_tweet_id_memoria = tweet_id
-                break
+            # Actualizamos la memoria con este nuevo ID
+            ultimo_tweet_id_memoria = tweet_id
                 
         else:
-            print("La API respondió pero está sincronizando...", flush=True)
+            print(f"La API respondió con código: {res.status_code}", flush=True)
     except Exception as e:
         print(f"Error consultando FxTwitter: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot definitivo y enviando alerta de prueba...", flush=True)
-    # PRUEBA FORZADA AL ARRANCAR
-    prueba_res = enviar_a_telegram("🦁🚀 <b>¡El bot de los Leones del Caracas se ha conectado y está operativo!</b> Monitoreando X en tiempo real.")
-    print("Resultado de la prueba inicial:", prueba_res, flush=True)
+    print("Iniciando bot definitivo sincronizado...", flush=True)
+    # Mensaje de arranque para verificar visualmente
+    enviar_a_telegram("🦁🔄 <b>El bot se ha reiniciado y está escaneando a los Leones en tiempo real.</b>")
 
     while True:
         try:
