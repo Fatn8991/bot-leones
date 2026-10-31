@@ -1,7 +1,7 @@
 import requests
 import os
 import time
-from bs4 import BeautifulSoup
+import re
 
 X_USERNAME = "leones_cbbc"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -27,7 +27,7 @@ def enviar_a_telegram(mensaje):
 
 def verificar_actualizacion():
     global ultimo_tweet_id_memoria
-    print(f"Consultando publicaciones para @{X_USERNAME}...", flush=True)
+    print(f"Consultando publicaciones limpias para @{X_USERNAME}...", flush=True)
     
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}"
     
@@ -46,19 +46,30 @@ def verificar_actualizacion():
         contenido_markdown = data.get("data", {}).get("content", "")
         
         if not contenido_markdown:
-            print("Contenido vacío recibido del conector.", flush=True)
+            print("Contenido vacío recibido.", flush=True)
             return
 
         lineas = [l.strip() for l in contenido_markdown.split("\n") if l.strip()]
         
         tweet_candidato = None
         for linea in lineas:
-            if len(linea) > 15 and not linea.startswith("http") and "Leones del Caracas" not in linea and "(@leones_cbbc)" not in linea and "Following" not in linea and "Followers" not in linea:
-                tweet_candidato = linea
-                break
+            # Filtramos para descartar enlaces, cabeceras, y etiquetas de imágenes tipo [Image ...]
+            if (len(linea) > 20 and 
+                not linea.startswith("http") and 
+                not linea.startswith("[Image") and 
+                "Leones del Caracas" not in linea and 
+                "(@leones_cbbc)" not in linea and 
+                "Following" not in linea and 
+                "Followers" not in linea):
+                
+                # Limpiamos cualquier residuo de corchetes o Markdown de imagen si se colela
+                linea_limpia = re.sub(r'\[Image[^\]]*\]\([^)]+\)', '', linea).strip()
+                if len(linea_limpia) > 15:
+                    tweet_candidato = linea_limpia
+                    break
 
         if not tweet_candidato:
-            print("No se encontró texto de tuit válido en este ciclo.", flush=True)
+            print("No se encontró texto de tuit válido y limpio en este ciclo.", flush=True)
             return
 
         tweet_id = str(hash(tweet_candidato))
@@ -72,7 +83,7 @@ def verificar_actualizacion():
         
         resultado = enviar_a_telegram(mensaje)
         if resultado.get("ok"):
-            print("¡Mensaje enviado exitosamente!", flush=True)
+            print("¡Mensaje limpio enviado exitosamente!", flush=True)
             ultimo_tweet_id_memoria = tweet_id
         else:
             print("Telegram rechazó el envío.", flush=True)
@@ -81,8 +92,8 @@ def verificar_actualizacion():
         print(f"Excepción en la verificación: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot principal de Leones...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>¡Bot conectado y listo para los juegos!</b>")
+    print("Iniciando bot con filtro de texto limpio...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>¡Bot optimizado con filtro de texto limpio activo!</b>")
 
     while True:
         verificar_actualizacion()
