@@ -29,18 +29,15 @@ def verificar_nitter_rss():
     global ultimo_tweet_id_memoria
     print("Consultando el feed RSS de Nitter...", flush=True)
     
-    # Instancias públicas de Nitter suelen ofrecer feeds RSS directos
     url_rss = f"https://nitter.privacydev.net/{X_USERNAME}/rss"
     
     try:
-        # Usamos feedparser para leer el XML de forma limpia
         feed = feedparser.parse(url_rss)
         
         if not feed.entries:
             print("No se encontraron entradas en el RSS de Nitter.", flush=True)
             return
 
-        # Tomamos el tuit más reciente
         entrada = feed.entries[0]
         tweet_link = entrada.link
         
@@ -56,13 +53,12 @@ def verificar_nitter_rss():
             print("Sin nuevos tweets en Nitter.", flush=True)
             return
 
-        # Limpiamos las etiquetas HTML del resumen del tuit
         raw_content = entrada.get("summary", "")
         soup = BeautifulSoup(raw_content, "html.parser")
         tweet_texto = soup.get_text()
 
-        # Armamos el mensaje igualito a como te gustaba
-        mensaje = f"🦁⚾ <b>¡Nuevo Tweet de los Leones!</b>\n\n{tweet_texto}\n\n🔗 {tweet_link}"
+        # Ocultamos la URL de Nitter detrás de un texto limpio usando HTML de Telegram
+        mensaje = f"🦁⚾ <b>¡Nuevo Tweet de los Leones!</b>\n\n{tweet_texto}\n\n🔗 <a href='{tweet_link}'>Ver publicación original en X</a>"
         
         resultado = enviar_a_telegram(mensaje)
         if resultado.get("ok"):
@@ -76,8 +72,8 @@ def verificar_nitter_rss():
         print(f"Excepción al leer Nitter RSS: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con motor Nitter RSS...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>¡Bot reconectado al sistema Nitter RSS y operativo!</b>")
+    print("Iniciando bot con formato limpio...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>¡Bot actualizado con formato de mensajes limpios!</b>")
 
     while True:
         try:
