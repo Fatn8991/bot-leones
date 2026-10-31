@@ -2,6 +2,19 @@ import requests
 import os
 import time
 import re
+from threading import Thread
+from flask import Flask
+
+# Servidor Flask mínimo para mantener despierto a Render
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot de Leones del Caracas activo 24/7 🦁⚾"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
 
 X_USERNAME = "leones_cbbc"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -64,24 +77,13 @@ def verificar_actualizacion():
             print("Sin nuevas jugadas en este ciclo.", flush=True)
             return
 
-        # --- LIMPIEZA PROFUNDA DE TEXTO ---
-        # 1. Eliminar etiquetas de imágenes Markdown completas: [![Image...]...]
+        # Limpieza profunda de metadatos y enlaces
         tweet_candidato = re.sub(r'\[\s*!\[Image[^\]]*\]\([^)]+\)\]\([^)]+\)', '', tweet_candidato)
         tweet_candidato = re.sub(r'!\[Image[^\]]*\]\([^)]+\)', '', tweet_candidato)
-        
-        # 2. Eliminar menciones al usuario de X
         tweet_candidato = re.sub(r'@leones_cbbc', '', tweet_candidato, flags=re.IGNORECASE)
-        
-        # 3. Limpiar enlaces web sueltos
         tweet_candidato = re.sub(r'https?://\S+', '', tweet_candidato)
-        
-        # 4. Limpiar fechas basura o textos institucionales
         tweet_candidato = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}', '', tweet_candidato)
-
-        # 5. Formatear enlaces tipo [Texto](URL) dejando solo el texto visible
         tweet_candidato = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', tweet_candidato)
-
-        # 6. Quitar asteriscos sueltos o símbolos de lista de Markdown y espacios dobles
         tweet_candidato = tweet_candidato.replace('*', '').replace('  ', ' ').strip()
 
         if len(tweet_candidato) < 10:
@@ -106,10 +108,19 @@ def verificar_actualizacion():
     except Exception as e:
         print(f"Excepción en la verificación: {e}", flush=True)
 
-if __name__ == "__main__":
-    print("Iniciando bot con formato ultra limpio y sin ruido...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>¡Bot optimizado y limpio de metadatos!</b>")
-
+def bucle_bot():
+    print("Iniciando bucle de monitoreo de jugadas...", flush=True)
     while True:
         verificar_actualizacion()
         time.sleep(10)
+
+if __name__ == "__main__":
+    print("Iniciando servidor web y bot simultáneamente...", flush=True)
+    
+    # Lanzamos el bot en un hilo secundario independiente
+    t = Thread(target=bucle_bot)
+    t.daemon = True
+    t.start()
+    
+    # Ejecutamos Flask en el hilo principal para mantener vivo el puerto de Render
+    run_flask()
