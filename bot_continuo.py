@@ -27,7 +27,7 @@ def enviar_a_telegram(mensaje):
 
 def verificar_actualizacion():
     global ultimo_tweet_id_memoria
-    print(f"Buscando tuits reales para @{X_USERNAME}...", flush=True)
+    print(f"Buscando jugadas en vivo para @{X_USERNAME}...", flush=True)
     
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}"
     
@@ -54,46 +54,40 @@ def verificar_actualizacion():
         for linea in lineas:
             texto_minus = linea.lower()
             
-            # Lista negra absoluta: cualquier coincidencia con la bio o elementos de la interfaz descarta la línea
-            if any(frase in texto_minus for frase[cite: 10, 13]:
+            # Filtramos únicamente la biografía pesada, dejando pasar las jugadas en vivo
+            if any(frase in texto_minus for frase in [
                 "única cuenta oficial",
                 "organización caracas",
                 "84 años de historia",
                 "títulos de la lvbp",
                 "series del caribe",
-                "x (formerly twitter)",
-                "on x",
-                "following",
-                "followers",
-                "joined",
-                "http",
-                "[image"
+                "x (formerly twitter)"
             ]):
                 continue
                 
-            # Validamos que el texto tenga tamaño de tuit real y no sea basura de interfaz
-            if len(linea) > 25:
+            # Capturamos cualquier línea con longitud razonable de texto o marcador
+            if len(linea) > 10 and not linea.startswith("http") and not linea.startswith("[Image"):
                 linea_limpia = re.sub(r'\[Image[^\]]*\]\([^)]+\)', '', linea).strip()
-                if len(linea_limpia) > 25:
+                if len(linea_limpia) > 10:
                     tweet_candidato = linea_limpia
                     break
 
         if not tweet_candidato:
-            print("No hay tuits nuevos de juego (perfil filtrado correctamente). El bot se mantiene en espera.", flush=True)
+            print("No hay nuevas jugadas en este ciclo.", flush=True)
             return
 
         tweet_id = str(hash(tweet_candidato))
         print(f"ID evaluado: {tweet_id} | Memoria previa: {ultimo_tweet_id_memoria}", flush=True)
 
         if tweet_id == ultimo_tweet_id_memoria:
-            print("El tuit ya fue procesado anteriormente.", flush=True)
+            print("La jugada ya fue procesada anteriormente.", flush=True)
             return
 
-        mensaje = f"🦁⚾ <b>¡Actualización de los Leones!</b>\n\n{tweet_candidato}\n\n🔗 <a href='https://x.com/{X_USERNAME}'>Ver en X</a>"
+        mensaje = f"🦁⚾ <b>¡Jugada en vivo - Leones!</b>\n\n{tweet_candidato}\n\n🔗 <a href='https://x.com/{X_USERNAME}'>Ver en X</a>"
         
         resultado = enviar_a_telegram(mensaje)
         if resultado.get("ok"):
-            print("¡Tuit real enviado con éxito al canal!", flush=True)
+            print("¡Jugada enviada con éxito al canal!", flush=True)
             ultimo_tweet_id_memoria = tweet_id
         else:
             print("Telegram rechazó el envío.", flush=True)
@@ -102,9 +96,9 @@ def verificar_actualizacion():
         print(f"Excepción en la verificación: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con filtro anti-biografía reforzado...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>¡Bot con filtro reforzado activo! Monitoreando jugadas...</b>")
+    print("Iniciando bot con captura de jugadas en vivo...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>¡Bot activo y capturando jugada a jugada!</b>")
 
     while True:
         verificar_actualizacion()
-        time.sleep(45)
+        time.sleep(30)
