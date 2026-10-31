@@ -15,7 +15,7 @@ def enviar_a_telegram(mensaje):
         "chat_id": CHAT_ID,
         "text": mensaje,
         "parse_mode": "HTML",
-        "disable_web_page_preview": False
+        "disable_web_page_preview": True  # <-- Esto elimina la tarjeta grande de vista previa del enlace
     }
     try:
         response = requests.post(url, json=payload, timeout=15)
@@ -48,14 +48,11 @@ def verificar_actualizacion():
         if not contenido_markdown:
             return
 
-        # Dividimos el contenido en bloques de texto o líneas para buscar la jugada completa
         lineas = [l.strip() for l in contenido_markdown.split("\n") if l.strip()]
         
         tweet_candidato = None
         for i, linea in enumerate(lineas):
-            # Buscamos de forma estricta el hashtag que identifica las jugadas en vivo
             if "#LEO" in linea or "#leo" in linea:
-                # Si encontramos el hashtag, tomamos la línea actual y/o la inmediatamente anterior que contiene la jugada
                 texto_jugada = linea
                 if i > 0 and len(lineas[i-1]) > 10:
                     texto_jugada = f"{lineas[i-1]}\n\n{linea}"
@@ -67,8 +64,13 @@ def verificar_actualizacion():
             print("No se encontraron jugadas nuevas con #LEO en este ciclo.", flush=True)
             return
 
-        # Limpiamos residuos de enlaces o formato Markdown de imagen
-        tweet_candidato = re.sub(r'\[Image[^\]]*\]\([^)]+\)', '', tweet_candidato).strip()
+        # Limpiamos URLs, etiquetas de imágenes y textos basura como fechas extrañas
+        tweet_candidato = re.sub(r'https?://\S+', '', tweet_candidato)
+        tweet_candidato = re.sub(r'\[Image[^\]]*\]\([^)]+\)', '', tweet_candidato)
+        tweet_candidato = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}', '', tweet_candidato).strip()
+
+        if len(tweet_candidato) < 10:
+            return
 
         tweet_id = str(hash(tweet_candidato))
         print(f"ID evaluado: {tweet_id} | Memoria previa: {ultimo_tweet_id_memoria}", flush=True)
@@ -77,11 +79,12 @@ def verificar_actualizacion():
             print("Esta jugada ya fue publicada anteriormente.", flush=True)
             return
 
-        mensaje = f"🦁⚾ <b>¡Jugada en vivo - Leones!</b>\n\n{tweet_candidato}\n\n🔗 <a href='https://x.com/{X_USERNAME}'>Ver en X</a>"
+        # Mensaje limpio sin enlaces para evitar tarjetas de vista previa
+        mensaje = f"🦁⚾ <b>¡Jugada en vivo!</b>\n\n{tweet_candidato}"
         
         resultado = enviar_a_telegram(mensaje)
         if resultado.get("ok"):
-            print("¡Jugada con #LEO enviada con éxito al canal!", flush=True)
+            print("¡Jugada limpia enviada con éxito al canal!", flush=True)
             ultimo_tweet_id_memoria = tweet_id
         else:
             print("Telegram rechazó el envío.", flush=True)
@@ -90,8 +93,8 @@ def verificar_actualizacion():
         print(f"Excepción en la verificación: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot enfocado en #LEO...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>¡Bot calibrado para capturar jugadas por #LEO!</b>")
+    print("Iniciando bot con formato ultra limpio...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>¡Bot optimizado: solo texto de jugadas en vivo!</b>")
 
     while True:
         verificar_actualizacion()
