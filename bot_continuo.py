@@ -27,13 +27,18 @@ def verificar_feed():
     global ultimo_tweet_id_memoria
     print("Consultando actualizaciones...", flush=True)
     
-    # Podemos usar una alternativa limpia o mantener la URL base robusta
     url = f"https://fxtwitter.com/{X_USERNAME}"
     
     try:
         res = requests.get(url, timeout=10)
         if res.status_code == 200:
-            data = res.json()
+            # Verificamos que la respuesta sea realmente JSON antes de parsear
+            try:
+                data = res.json()
+            except Exception:
+                print("La API respondió pero el formato no es JSON válido (posible bloqueo temporal).", flush=True)
+                return
+
             tweets = data.get("tweets", []) if isinstance(data, dict) else []
 
             if not tweets:
@@ -85,8 +90,8 @@ def verificar_feed():
         print(f"Excepción en la consulta: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot corregido...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>Bot reiniciado y operando sin errores de sintaxis.</b>")
+    print("Iniciando bot con manejo seguro de errores...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>Bot actualizado y monitoreando el feed sin interrupciones.</b>")
 
     while True:
         try:
