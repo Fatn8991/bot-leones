@@ -19,7 +19,6 @@ def enviar_a_telegram(mensaje):
     }
     try:
         response = requests.post(url, json=payload, timeout=15)
-        print(f"Respuesta de Telegram: {response.text}", flush=True)
         return response.json()
     except Exception as err:
         print(f"Error al conectar con Telegram: {err}", flush=True)
@@ -29,7 +28,6 @@ def verificar_actualizacion():
     global ultimo_tweet_id_memoria
     print(f"Buscando jugadas en tiempo real para @{X_USERNAME}...", flush=True)
     
-    # Añadimos un parámetro de tiempo aleatorio para evitar que el conector entregue caché vieja
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}"
     
     try:
@@ -57,7 +55,7 @@ def verificar_actualizacion():
             if "#LEO" in linea or "#leo" in linea:
                 texto_jugada = linea
                 if i > 0 and len(lineas[i-1]) > 10:
-                    texto_jugada = f"{lineas[i-1]}\n\n{linea}"
+                    texto_jugada = f"{lineas[i-1]}\n{linea}"
                 
                 tweet_candidato = texto_jugada
                 break
@@ -66,10 +64,25 @@ def verificar_actualizacion():
             print("Sin nuevas jugadas en este ciclo.", flush=True)
             return
 
-        # Limpieza de textos extraños y enlaces
+        # --- LIMPIEZA PROFUNDA DE TEXTO ---
+        # 1. Eliminar etiquetas de imágenes Markdown completas: [![Image...]...]
+        tweet_candidato = re.sub(r'\[\s*!\[Image[^\]]*\]\([^)]+\)\]\([^)]+\)', '', tweet_candidato)
+        tweet_candidato = re.sub(r'!\[Image[^\]]*\]\([^)]+\)', '', tweet_candidato)
+        
+        # 2. Eliminar menciones al usuario de X
+        tweet_candidato = re.sub(r'@leones_cbbc', '', tweet_candidato, flags=re.IGNORECASE)
+        
+        # 3. Limpiar enlaces web sueltos
         tweet_candidato = re.sub(r'https?://\S+', '', tweet_candidato)
-        tweet_candidato = re.sub(r'\[Image[^\]]*\]\([^)]+\)', '', tweet_candidato)
-        tweet_candidato = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}', '', tweet_candidato).strip()
+        
+        # 4. Limpiar fechas basura o textos institucionales
+        tweet_candidato = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}', '', tweet_candidato)
+
+        # 5. Formatear enlaces tipo [Texto](URL) dejando solo el texto visible
+        tweet_candidato = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', tweet_candidato)
+
+        # 6. Quitar asteriscos sueltos o símbolos de lista de Markdown y espacios dobles
+        tweet_candidato = tweet_candidato.replace('*', '').replace('  ', ' ').strip()
 
         if len(tweet_candidato) < 10:
             return
@@ -85,7 +98,7 @@ def verificar_actualizacion():
         
         resultado = enviar_a_telegram(mensaje)
         if resultado.get("ok"):
-            print("¡Jugada enviada al instante!", flush=True)
+            print("¡Jugada ultra limpia enviada al canal!", flush=True)
             ultimo_tweet_id_memoria = tweet_id
         else:
             print("Telegram rechazó el envío.", flush=True)
@@ -94,9 +107,9 @@ def verificar_actualizacion():
         print(f"Excepción en la verificación: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot ultra rápido...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>¡Bot sincronizado en tiempo real para el partido!</b>")
+    print("Iniciando bot con formato ultra limpio y sin ruido...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>¡Bot optimizado y limpio de metadatos!</b>")
 
     while True:
         verificar_actualizacion()
-        time.sleep(10)  # <-- Reducido a 10 segundos para máxima velocidad
+        time.sleep(10)
