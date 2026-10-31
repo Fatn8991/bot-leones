@@ -23,27 +23,23 @@ def enviar_a_telegram(mensaje):
         print(f"Error al conectar con Telegram: {err}", flush=True)
         return {}
 
-def verificar_fxtwitter_inteligente():
+def verificar_feed():
     global ultimo_tweet_id_memoria
-    print("Consultando tweets oficiales y jugadas de los Leones...", flush=True)
+    print("Consultando actualizaciones...", flush=True)
+    
+    # Podemos usar una alternativa limpia o mantener la URL base robusta
     url = f"https://fxtwitter.com/{X_USERNAME}"
     
     try:
         res = requests.get(url, timeout=10)
         if res.status_code == 200:
             data = res.json()
-            tweets = []
-            if isinstance(data, dict):
-                raw_tweets = data.get("tweets")
-                if isinstance(raw_tweets, list):
-                    tweets = raw_tweets
+            tweets = data.get("tweets", []) if isinstance(data, dict) else []
 
             if not tweets:
-                print("No se encontraron tweets en la respuesta de la API.", flush=True)
+                print("No se encontraron tweets en este momento.", flush=True)
                 return
 
-            # Tomamos el tuit más reciente (suele ser el primero de la lista)
-            tweet mas reciente
             tweet_reciente = tweets[0]
             if not isinstance(tweet_reciente, dict):
                 return
@@ -52,56 +48,49 @@ def verificar_fxtwitter_inteligente():
             if not tweet_id:
                 return
 
-            print(f"Último ID detectado en X: {tweet_id} | ID en memoria: {ultimo_tweet_id_memoria}", flush=True)
+            print(f"ID actual en X: {tweet_id} | Memoria: {ultimo_tweet_id_memoria}", flush=True)
 
-            # Si es el mismo de la memoria, no hacemos nada y esperamos
             if tweet_id == ultimo_tweet_id_memoria:
-                print("No hay tweets nuevos desde la última revisión.", flush=True)
+                print("Sin novedades, esperando siguiente ciclo.", flush=True)
                 return
 
-            # Si es un tuit completamente nuevo, lo procesamos
             tweet_texto = tweet_reciente.get("text", "")
             media = tweet_reciente.get("media", {})
             tiene_multimedia = bool(media and (media.get("photos") or media.get("videos") or media.get("mosaic")))
             
             texto_lower = tweet_texto.lower()
-            es_jugada_o_marcador = any(palabra in texto_lower for palabra in [
+            es_jugada = any(palabra in texto_lower for palabra in [
                 "jonrón", "hr", "hit", "doble", "triple", "carrera", "anota", 
-                "out", "inning", "ponche", "pitcher", "lanzador", "marcador", 
-                "ganando", "en vivo", "playball", "alineación", "final", "victoria"
+                "out", "inning", "ponche", "marcador", "ganando", "final", "victoria"
             ])
 
-            # Filtro optimizado
-            if tiene_multimedia or es_jugada_o_marcador:
+            if tiene_multimedia or es_jugada:
                 tweet_link = tweet_reciente.get("url", f"https://x.com/{X_USERNAME}/status/{tweet_id}")
-                
                 icono = "🦁📺" if tiene_multimedia else "⚾📊"
                 mensaje = f"{icono} <b>Reporte de los Leones:</b>\n\n{tweet_texto}\n\n🔗 {tweet_link}"
                 
                 resultado = enviar_a_telegram(mensaje)
                 if resultado.get("ok"):
-                    print(f"¡Publicado en Telegram con éxito! (ID: {tweet_id})", flush=True)
+                    print(f"¡Enviado a Telegram con éxito! (ID: {tweet_id})", flush=True)
                 else:
                     print("Error al enviar a Telegram:", resultado, flush=True)
             else:
-                print(f"Tweet {tweet_id} omitido por filtro antispam (Sin multimedia ni palabras clave).", flush=True)
+                print(f"Tweet {tweet_id} filtrado (sin multimedia ni relevancia de juego).", flush=True)
 
-            # Actualizamos la memoria con este nuevo ID
             ultimo_tweet_id_memoria = tweet_id
                 
         else:
-            print(f"La API respondió con código: {res.status_code}", flush=True)
+            print(f"Respuesta de la API HTTP: {res.status_code}", flush=True)
     except Exception as e:
-        print(f"Error consultando FxTwitter: {e}", flush=True)
+        print(f"Excepción en la consulta: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot definitivo sincronizado...", flush=True)
-    # Mensaje de arranque para verificar visualmente
-    enviar_a_telegram("🦁🔄 <b>El bot se ha reiniciado y está escaneando a los Leones en tiempo real.</b>")
+    print("Iniciando bot corregido...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>Bot reiniciado y operando sin errores de sintaxis.</b>")
 
     while True:
         try:
-            verificar_fxtwitter_inteligente()
+            verificar_feed()
         except Exception as e:
             print("Error en el ciclo principal:", e, flush=True)
         
