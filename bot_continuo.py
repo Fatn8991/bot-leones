@@ -36,9 +36,8 @@ def enviar_a_telegram(mensaje, foto_url=None):
 
 def verificar_actualizacion():
     global ultimo_tweet_id_memoria
-    print(f"Verificando actualizaciones para @{X_USERNAME}...", flush=True)
+    print(f"Verificando publicaciones para @{X_USERNAME}...", flush=True)
     
-    # Usamos un servicio de respaldo público alternativo para evitar el 404
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}"
     
     try:
@@ -52,21 +51,53 @@ def verificar_actualizacion():
             print(f"Servicio alternativo respondió con código: {response.status_code}", flush=True)
             return
 
-        contenido = response.text
+        data = response.json()
+        contenido_markdown = data.get("data", {}).get("content", "")
         
-        # Verificamos si hay texto nuevo y simulamos la lectura del último tuit
-        if not contenido:
-            print("Contenido vacío recibido.", flush=True)
+        if not contenido_markdown:
+            print("No se encontró contenido en la respuesta.", flush=True)
             return
 
-        print("¡Conexión exitosa con el servicio de lectura!", flush=True)
+        # Tomamos una porción del texto para usarlo como identificador único del tuit actual
+        lineas = [l.strip() for l in contenido_markdown.split("\n") if l.strip()]
+        if not lineas:
+            return
+            
+        # Buscamos las líneas que parezcan contenido de tuit (evitando cabeceras de perfil)
+        tweet_texto = ""
+        for linea in lineas:
+            if len(linea) > 20 and "Leones del Caracas" not in linea and "(@leones_cbbc)" not in linea:
+                tweet_texto = linea
+                break
+
+        if not tweet_texto:
+            tweet_texto = lineas[0]
+
+        # Usamos el texto como firma de memoria para evitar duplicados
+        tweet_id = str(hash(tweet_texto))
+
+        print(f"Identificador de tuit actual: {tweet_id} | Memoria: {ultimo_tweet_id_memoria}", flush=True)
+
+        if tweet_id == ultimo_tweet_id_memoria:
+            print("Sin nuevos tuits en este ciclo.", flush=True)
+            return
+
+        mensaje = f"🦁⚾ <b>¡Actualización de los Leones!</b>\n\n{tweet_texto}\n\n🔗 <a href='https://x.com/{X_USERNAME}'>Ver perfil oficial en X</a>"
         
+        resultado = enviar_a_telegram(mensaje)
+        if resultado.get("ok"):
+            print("¡Tuit enviado con éxito al canal de Telegram!", flush=True)
+        else:
+            print("Error al enviar a Telegram:", resultado, flush=True)
+
+        ultimo_tweet_id_memoria = tweet_id
+
     except Exception as e:
-        print(f"Excepción al consultar el servicio: {e}", flush=True)
+        print(f"Excepción al procesar la actualización: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con conector alternativo...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>¡Bot reiniciado con conector de respaldo activo!</b>")
+    print("Iniciando bot con conector estables de X...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>¡Bot sincronizado y monitoreando el equipo!</b>")
 
     while True:
         try:
