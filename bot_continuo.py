@@ -37,7 +37,7 @@ def enviar_a_telegram(mensaje, url_imagen=None):
 
 def verificar_actualizacion():
     global ultimo_enlace_memoria
-    print(f"Buscando publicaciones limpias para @{X_USERNAME}...", flush=True)
+    print(f"Buscando publicaciones para @{X_USERNAME}...", flush=True)
     
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}"
     
@@ -72,31 +72,32 @@ def verificar_actualizacion():
 
             if any(tag in linea for tag in ["#LEO", "#leo", "#CaraquistaSoy", "#caraquistasoy"]):
                 
-                # Extraemos el texto real del tuit ignorando metadatos
-                texto_encontrado = ""
+                # Buscamos el texto principal del tuit (mirando hacia arriba desde el hashtag)
+                texto_principal = ""
                 for k in range(max(0, i-3), i+1):
                     candidata = lineas[k]
+                    # Omitimos líneas no deseadas pero rescatamos el mensaje de texto real
                     if any(x in candidata.lower() for x in ["leones_cbbc", "http://", "https://", "![image", "video"]):
                         continue
                     if re.match(r'^\[\s*\d+[mh]\s*\]', candidata):
                         continue
-                    if len(candidata) > 5:
-                        texto_encontrado = candidata
+                    if len(candidata) > 3:
+                        texto_principal = candidata
                         break
                 
-                if not texto_encontrado:
-                    texto_encontrado = linea
+                if not texto_principal:
+                    texto_principal = linea
 
-                tweet_candidato = texto_encontrado
+                tweet_candidato = texto_principal
                 
-                # Obtenemos el identificador/enlace único del tuit para evitar duplicados
+                # Obtenemos el enlace único del tuit para la memoria anti-duplicados
                 for j in range(max(0, i-5), min(len(lineas), i+6)):
                     match_link = re.search(r'https?://(?:x|twitter)\.com/[^/]+/status/(\d+)', lineas[j])
                     if match_link:
                         enlace_candidato = match_link.group(1)
                         break
                 
-                # Buscamos la imagen oficial de alta resolución asociada
+                # Buscamos la imagen oficial de alta resolución
                 for j in range(max(0, i-4), min(len(lineas), i+5)):
                     match_img = re.search(r'!\[Image[^\]]*\]\((https?://pbs\.twimg\.com/media/[^)]+)\)', lineas[j])
                     if match_img:
@@ -114,10 +115,10 @@ def verificar_actualizacion():
         print(f"ID/Enlace evaluado: {enlace_candidato} | Memoria previa: {ultimo_enlace_memoria}", flush=True)
 
         if enlace_candidato == ultimo_enlace_memoria:
-            print("Esta publicación ya fue enviada anteriormente (bloqueado).", flush=True)
+            print("Esta publicación ya fue enviada (bloqueada).", flush=True)
             return
 
-        # --- LIMPIEZA PROFUNDA DE TEXTO ---
+        # --- LIMPIEZA DE ARTEFACTOS Y CORCHETES ---
         texto_limpio = tweet_candidato
         texto_limpio = re.sub(r'\[\s*\d+[mh]\s*\]', '', texto_limpio)
         texto_limpio = re.sub(r'\[Video\s*\d*\]', '', texto_limpio, flags=re.IGNORECASE)
@@ -135,17 +136,17 @@ def verificar_actualizacion():
         if len(texto_limpio) < 3:
             texto_limpio = "¡Publicación oficial de los Leones del Caracas!"
 
+        # Formateamos el mensaje limpio con el texto real del tuit
         if imagen_candidata:
             mensaje = f"🦁🏆 <b>{texto_limpio}</b>"
         else:
             mensaje = f"🦁⚾ <b>{texto_limpio}</b>"
 
-        # Guardamos en memoria ANTES de enviar para prevenir reenvíos en caso de retardo
         ultimo_enlace_memoria = enlace_candidato
 
         resultado = enviar_a_telegram(mensaje, url_imagen=imagen_candidata)
         if resultado.get("ok"):
-            print("¡Publicación enviada y registrada en memoria con éxito!", flush=True)
+            print("¡Publicación enviada con su texto original e imagen!", flush=True)
         else:
             print(f"Telegram rechazó el envío: {resultado}", flush=True)
 
@@ -153,8 +154,7 @@ def verificar_actualizacion():
         print(f"Excepción general en la verificación: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot en modo silencioso y continuo...", flush=True)
-    # Ya no enviamos mensajes de prueba al iniciar para evitar spam en el canal
+    print("Iniciando bot con extracción de texto principal corregida...", flush=True)
 
     while True:
         try:
