@@ -7,7 +7,8 @@ X_USERNAME = "leones_cbbc"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-ultimo_tweet_id_memoria = None
+# Ahora guardaremos el enlace único del tuit en lugar del hash del texto
+ultimo_enlace_memoria = None
 
 def enviar_a_telegram(mensaje, url_imagen=None):
     if url_imagen:
@@ -36,8 +37,8 @@ def enviar_a_telegram(mensaje, url_imagen=None):
         return {}
 
 def verificar_actualizacion():
-    global ultimo_tweet_id_memoria
-    print(f"Buscando publicaciones limpias para @{X_USERNAME}...", flush=True)
+    global ultimo_enlace_memoria
+    print(f"Buscando nuevas publicaciones únicas para @{X_USERNAME}...", flush=True)
     
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}"
     
@@ -63,10 +64,11 @@ def verificar_actualizacion():
         lineas = [l.strip() for l in contenido_markdown.split("\n") if l.strip()]
         
         tweet_candidato = None
+        enlace_candidato = None
         imagen_candidata = None
         
         for i, linea in enumerate(lineas):
-            # Filtramos para evitar agarrar la biografía del perfil por error
+            # Filtro anti-biografía institucional
             if "Única cuenta oficial" in linea or "títulos de la LVBP" in linea:
                 continue
 
@@ -77,7 +79,14 @@ def verificar_actualizacion():
                 
                 tweet_candidato = texto_jugada
                 
-                # Buscamos la imagen oficial de alta resolución asociada al tuit
+                # Buscamos el enlace único del tuit en las líneas cercanas (ej: /leones_cbbc/status/123456)
+                for j in range(max(0, i-5), min(len(lineas), i+6)):
+                    match_link = re.search(r'https?://(?:x|twitter)\.com/[^/]+/status/(\d+)', lineas[j])
+                    if match_link:
+                        enlace_candidato = match_link.group(1)
+                        break
+                
+                # Buscamos la imagen oficial de alta resolución
                 for j in range(max(0, i-4), min(len(lineas), i+5)):
                     match_img = re.search(r'!\[Image[^\]]*\]\((https?://pbs\.twimg\.com/media/[^)]+)\)', lineas[j])
                     if match_img:
@@ -89,7 +98,17 @@ def verificar_actualizacion():
             print("No se encontraron publicaciones relevantes en este ciclo.", flush=True)
             return
 
-        # Limpieza estricta de metadatos, enlaces y texto basura
+        # Si no encontramos un enlace de status único, generamos una firma basada en las primeras palabras del texto para evitar nulos
+        if not enlace_candidato:
+            enlace_candidato = tweet_candidato[:30]
+
+        print(f"ID/Enlace evaluado: {enlace_candidato} | Memoria previa: {ultimo_enlace_memoria}", flush=True)
+
+        if enlace_candidato == ultimo_enlace_memoria:
+            print("Esta publicación ya fue enviada (duplicado bloqueado).", flush=True)
+            return
+
+        # Limpieza estricta de metadatos y enlaces
         texto_limpio = re.sub(r'\[\s*!\[Image[^\]]*\]\([^)]+\)\]\([^)]+\)', '', tweet_candidato)
         texto_limpio = re.sub(r'!\[Image[^\]]*\]\([^)]+\)', '', texto_limpio)
         texto_limpio = re.sub(r'@leones_cbbc', '', texto_limpio, flags=re.IGNORECASE)
@@ -101,13 +120,6 @@ def verificar_actualizacion():
         if len(texto_limpio) < 5 or "Única cuenta oficial" in texto_limpio:
             return
 
-        tweet_id = str(hash(texto_limpio))
-        print(f"ID evaluado: {tweet_id} | Memoria previa: {ultimo_tweet_id_memoria}", flush=True)
-
-        if tweet_id == ultimo_tweet_id_memoria:
-            print("Esta publicación ya fue enviada anteriormente.", flush=True)
-            return
-
         if imagen_candidata:
             mensaje = f"🦁🏆 <b>¡Publicación oficial / Victoria!</b>\n\n{texto_limpio}"
         else:
@@ -115,8 +127,8 @@ def verificar_actualizacion():
 
         resultado = enviar_a_telegram(mensaje, url_imagen=imagen_candidata)
         if resultado.get("ok"):
-            print("¡Enviado con éxito al canal de Telegram!", flush=True)
-            ultimo_tweet_id_memoria = tweet_id
+            print("¡Enviado con éxito al canal y guardado en memoria!", flush=True)
+            ultimo_enlace_memoria = enlace_candidato
         else:
             print(f"Telegram rechazó el envío: {resultado}", flush=True)
 
@@ -124,8 +136,8 @@ def verificar_actualizacion():
         print(f"Excepción general en la verificación: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con filtro anti-biografía y multimedia...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>¡Bot actualizado sin texto institucional!</b>")
+    print("Iniciando bot con control estricto anti-duplicados por ID...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>¡Bot actualizado con filtro anti-duplicados!</b>")
 
     while True:
         try:
