@@ -37,7 +37,7 @@ def enviar_a_telegram(mensaje, url_imagen=None):
 
 def verificar_actualizacion():
     global ultimo_enlace_memoria
-    print(f"Buscando tuits con extracción limpia de texto para @{X_USERNAME}...", flush=True)
+    print(f"Buscando publicaciones con extracción de texto optimizada para @{X_USERNAME}...", flush=True)
     
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}"
     
@@ -70,14 +70,25 @@ def verificar_actualizacion():
             if "Única cuenta oficial" in linea or "títulos de la LVBP" in linea:
                 continue
 
+            # Detectamos las etiquetas oficiales
             if any(tag in linea for tag in ["#LEO", "#leo", "#CaraquistaSoy", "#caraquistasoy"]):
-                # Tomamos la línea anterior si es el texto del tuit o la línea actual con el hashtag
-                texto_encontrado = ""
-                if i > 0 and len(lineas[i-1]) > 5 and "Única cuenta" not in lineas[i-1] and "![" not in lineas[i-1]:
-                    texto_encontrado = f"{lineas[i-1]}\n{linea}"
-                else:
-                    texto_encontrado = linea
                 
+                # Buscamos hacia arriba la línea que contiene el mensaje real del tuit
+                texto_encontrado = ""
+                for k in range(max(0, i-3), i+1):
+                    candidata = lineas[k]
+                    # Ignoramos líneas que sean nombres de usuario, horas o enlaces solos
+                    if any(x in candidata.lower() for x in ["leones_cbbc", "http://", "https://", "![image", "video"]):
+                        continue
+                    if re.match(r'^\[\s*\d+[mh]\s*\]', candidata): # Ignora cosas como [2h] o [15m]
+                        continue
+                    if len(candidata) > 5:
+                        texto_encontrado = candidata
+                        break
+                
+                if not texto_encontrado:
+                    texto_encontrado = linea # Respaldo con la línea actual
+
                 tweet_candidato = texto_encontrado
                 
                 # Buscamos el enlace único del tuit
@@ -87,7 +98,7 @@ def verificar_actualizacion():
                         enlace_candidato = match_link.group(1)
                         break
                 
-                # Buscamos la imagen oficial asociada
+                # Buscamos la imagen oficial asociada de alta resolución
                 for j in range(max(0, i-4), min(len(lineas), i+5)):
                     match_img = re.search(r'!\[Image[^\]]*\]\((https?://pbs\.twimg\.com/media/[^)]+)\)', lineas[j])
                     if match_img:
@@ -108,26 +119,26 @@ def verificar_actualizacion():
             print("Esta publicación ya fue enviada (duplicado bloqueado).", flush=True)
             return
 
-        # --- LIMPIEZA QUIRÚRGICA DE ARTEFACTOS SIN BORRAR EL TEXTO ---
+        # --- LIMPIEZA ABSOLUTA DE ARTEFACTOS, TIEMPOS Y CORCHETES ---
         texto_limpio = tweet_candidato
         
-        # Eliminar etiquetas específicas de video y blobs molestos
+        # Eliminar marcas de tiempo tipo [2h], [1m], etc.
+        texto_limpio = re.sub(r'\[\s*\d+[mh]\s*\]', '', texto_limpio)
+        
+        # Eliminar etiquetas de video, blobs y markdown sobrante
         texto_limpio = re.sub(r'\[Video\s*\d*\]', '', texto_limpio, flags=re.IGNORECASE)
         texto_limpio = re.sub(r'\(blob:[^)]+\)', '', texto_limpio)
         texto_limpio = re.sub(r'blob:\S+', '', texto_limpio)
-        
-        # Eliminar imágenes en markdown sobrantes
-        texto_limpio = re.sub(r'\[\s*!\[Image[^\]]*\]\([^)]+\)\]\([^)]+\)', '', texto_limpio)
         texto_limpio = re.sub(r'!\[Image[^\]]*\]\([^)]+\)', '', texto_limpio)
         
-        # Eliminar menciones y enlaces web
-        texto_limpio = re.sub(r'@leones_cbbc', '', texto_limpio, flags=re.IGNORECASE)
-        texto_limpio = re.sub(r'https?://\S+', '', texto_limpio)
-        
-        # Limpiar enlaces estilo markdown [Texto](url) dejando solo el Texto
+        # Eliminar enlaces estilo [Texto](url) conservando solo el texto legible
         texto_limpio = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', texto_limpio)
         
-        # Limpiar corchetes o paréntesis huérfanos que hayan quedado vacíos
+        # Eliminar menciones y URLs
+        texto_limpio = re.sub(r'@\w+', '', texto_limpio)
+        texto_limpio = re.sub(r'https?://\S+', '', texto_limpio)
+        
+        # Limpiar corchetes o paréntesis vacíos restantes
         texto_limpio = re.sub(r'\[\s*\]', '', texto_limpio)
         texto_limpio = re.sub(r'\(\s*\)', '', texto_limpio)
         
@@ -143,7 +154,7 @@ def verificar_actualizacion():
 
         resultado = enviar_a_telegram(mensaje, url_imagen=imagen_candidata)
         if resultado.get("ok"):
-            print("¡Enviado con éxito conservando el texto real del tuit!", flush=True)
+            print("¡Enviado con éxito y texto original recuperado!", flush=True)
             ultimo_enlace_memoria = enlace_candidato
         else:
             print(f"Telegram rechazó el envío: {resultado}", flush=True)
@@ -152,10 +163,10 @@ def verificar_actualizacion():
         print(f"Excepción general en la verificación: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con extracción de texto limpia y directa...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>¡Bot calibrado para mostrar el texto exacto de los tuits!</b>")
+    print("Iniciando bot con extracción de texto puro y sin marcas de tiempo...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>¡Bot calibrado para extraer el texto exacto sin [2h]!</b>")
 
-    while True:
+    while Time.sleep(10) is None: # Bucle estándar de control
         try:
             verificar_actualizacion()
         except Exception as err:
