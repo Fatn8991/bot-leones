@@ -37,7 +37,7 @@ def enviar_a_telegram(mensaje, url_imagen=None):
 
 def verificar_actualizacion():
     global ultimo_enlace_memoria
-    print(f"Buscando nuevas publicaciones para @{X_USERNAME}...", flush=True)
+    print(f"Buscando publicaciones y texto real para @{X_USERNAME}...", flush=True)
     
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}"
     
@@ -71,18 +71,21 @@ def verificar_actualizacion():
                 continue
 
             if any(tag in linea for tag in ["#LEO", "#leo", "#CaraquistaSoy", "#caraquistasoy"]):
-                texto_jugada = linea
-                if i > 0 and len(lineas[i-1]) > 5 and "Única cuenta" not in lineas[i-1]:
-                    texto_jugada = f"{lineas[i-1]}\n{linea}"
+                # Vamos a capturar un bloque más amplio alrededor de la etiqueta para no perder el mensaje superior
+                inicio_bloque = max(0, i-3)
+                fin_bloque = min(len(lineas), i+2)
                 
-                tweet_candidato = texto_jugada
+                bloque_texto = "\n".join(lineas[inicio_bloque:fin_bloque])
+                tweet_candidato = bloque_texto
                 
+                # Buscamos el enlace único del tuit
                 for j in range(max(0, i-5), min(len(lineas), i+6)):
                     match_link = re.search(r'https?://(?:x|twitter)\.com/[^/]+/status/(\d+)', lineas[j])
                     if match_link:
                         enlace_candidato = match_link.group(1)
                         break
                 
+                # Buscamos la imagen oficial asociada
                 for j in range(max(0, i-4), min(len(lineas), i+5)):
                     match_img = re.search(r'!\[Image[^\]]*\]\((https?://pbs\.twimg\.com/media/[^)]+)\)', lineas[j])
                     if match_img:
@@ -103,42 +106,36 @@ def verificar_actualizacion():
             print("Esta publicación ya fue enviada (duplicado bloqueado).", flush=True)
             return
 
-        # --- LIMPIEZA PROFUNDA Y DEFINITIVA DE ARTEFACTOS ---
+        # --- PURGA TOTAL DE ARTEFACTOS Y BASURA DE VIDEO ---
         texto_limpio = tweet_candidato
         
-        # Eliminar menciones a videos, blobs y elementos de reproductor
-        texto_limpio = re.sub(r'\[Video\s*\d*\]', '', texto_limpio, flags=I:=re.IGNORECASE)
-        texto_limpio = re.sub(r'\(blob:[^)]+\)', '', texto_limpio)
-        texto_limpio = re.sub(r'blob:\S+', '', texto_limpio)
+        # Eliminar líneas enteras que contengan artefactos de video o blobs
+        lineas_filtradas = []
+        for l in texto_limpio.split("\n"):
+            if any(x in l.lower() for x in ["video", "blob:", "http://", "https://", "leones_cbbc", "![image"]):
+                continue
+            lineas_filtradas.append(l)
+            
+        texto_limpio = "\n".join(lineas_filtradas)
         
-        # Eliminar imágenes en markdown sobrantes
-        texto_limpio = re.sub(r'\[\s*!\[Image[^\]]*\]\([^)]+\)\]\([^)]+\)', '', texto_limpio)
-        texto_limpio = re.sub(r'!\[Image[^\]]*\]\([^)]+\)', '', texto_limpio)
-        
-        # Eliminar menciones y enlaces web
-        texto_limpio = re.sub(r'@leones_cbbc', '', texto_limpio, flags=re.IGNORECASE)
-        texto_limpio = re.sub(r'https?://\S+', '', texto_limpio)
-        texto_limpio = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}', '', texto_limpio)
-        
-        # Limpiar enlaces estilo markdown [Texto](url) dejando solo el Texto limpio
-        texto_limpio = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', texto_limpio)
-        
-        # Limpiar corchetes, paréntesis huérfanos o asteriscos sobrantes
-        texto_limpio = re.sub(r'[\(\)\[\]]', '', texto_limpio)
+        # Limpiar corchetes, paréntesis sueltos y asteriscos
+        texto_limpio = re.sub(r'\[.*?\]', '', texto_limpio)
+        texto_limpio = re.sub(r'\(.*?\)', '', texto_limpio)
         texto_limpio = texto_limpio.replace('*', '').replace('  ', ' ').strip()
 
-        if len(texto_limpio) < 5 or "Única cuenta oficial" in texto_limpio:
-            return
+        if len(texto_limpio) < 3:
+            # Si por alguna razón el texto queda muy corto, aseguramos al menos el hashtag o un título por defecto
+            texto_limpio = "¡Gran jugada o reporte de los Leones del Caracas!"
 
         if imagen_candidata:
-            mensaje = f"🦁🏆 <b>¡Publicación oficial / Victoria!</b>\n\n{texto_limpio}"
+            mensaje = f"🦁🏆 <b>{texto_limpio}</b>"
         else:
-            mensaje = f"🦁⚾ <b>¡Jugada en vivo!</b>\n\n{texto_limpio}"
+            mensaje = f"🦁⚾ <b>{texto_limpio}</b>"
 
         resultado = enviar_a_telegram(mensaje, url_imagen=imagen_candidata)
         if resultado.get("ok"):
-            print("¡Enviado con éxito y texto ultra limpio!", flush=True)
-            ultimo_enlace_memoria = enlace_enlace_memoria if 'enlace_enlace_memoria' in locals() else enlace_candidato
+            print("¡Enviado con éxito y texto correctamente capturado!", flush=True)
+            ultimo_enlace_memoria = enlace_candidato
         else:
             print(f"Telegram rechazó el envío: {resultado}", flush=True)
 
@@ -146,8 +143,8 @@ def verificar_actualizacion():
         print(f"Excepción general en la verificación: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con purga total de artefactos y corchetes...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>¡Bot actualizado con texto 100% limpio de artefactos!</b>")
+    print("Iniciando bot con captura de texto superior optimizada...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>¡Bot optimizado para capturar el texto completo de los tuits!</b>")
 
     while True:
         try:
