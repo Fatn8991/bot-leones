@@ -10,7 +10,6 @@ CHAT_ID = os.environ.get("CHAT_ID")
 ultimo_tweet_id_memoria = None
 
 def enviar_a_telegram(mensaje, url_imagen=None):
-    # Si hay una imagen detectada, usamos sendPhoto de Telegram
     if url_imagen:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
         payload = {
@@ -20,7 +19,6 @@ def enviar_a_telegram(mensaje, url_imagen=None):
             "parse_mode": "HTML"
         }
     else:
-        # Si es una jugada normal de texto plano
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {
             "chat_id": CHAT_ID,
@@ -39,7 +37,7 @@ def enviar_a_telegram(mensaje, url_imagen=None):
 
 def verificar_actualizacion():
     global ultimo_tweet_id_memoria
-    print(f"Buscando jugadas y multimedia para @{X_USERNAME}...", flush=True)
+    print(f"Buscando jugadas y multimedia de alta calidad para @{X_USERNAME}...", flush=True)
     
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}"
     
@@ -68,26 +66,28 @@ def verificar_actualizacion():
         imagen_candidata = None
         
         for i, linea in enumerate(lineas):
-            if "#LEO" in linea or "#leo" in linea:
+            # Ampliamos el filtro para detectar #LEO o #CaraquistaSoy
+            if any(tag in linea for tag in ["#LEO", "#leo", "#CaraquistaSoy", "#caraquistasoy"]):
                 texto_jugada = linea
                 if i > 0 and len(lineas[i-1]) > 5:
                     texto_jugada = f"{lineas[i-1]}\n{linea}"
                 
                 tweet_candidato = texto_jugada
                 
-                # Buscamos si hay una imagen adjunta en las líneas cercanas (formato Markdown de Jina)
-                for j in range(max(0, i-3), min(len(lineas), i+4)):
-                    match_img = re.search(r'!\[Image[^\]]*\]\((https?://[^)]+)\)', lineas[j])
+                # Búsqueda mejorada de la imagen principal del tuit (excluyendo avatares pequeños de perfil)
+                for j in range(max(0, i-4), min(len(lineas), i+5)):
+                    # Buscamos URLs de imágenes de X que suelen venir en formato pbs.twimg.com/media
+                    match_img = re.search(r'!\[Image[^\]]*\]\((https?://pbs\.twimg\.com/media/[^)]+)\)', lineas[j])
                     if match_img:
                         imagen_candidata = match_img.group(1)
                         break
                 break
 
         if not tweet_candidato:
-            print("No se encontraron tuits con #LEO en este ciclo.", flush=True)
+            print("No se encontraron tuits relevantes en este ciclo.", flush=True)
             return
 
-        # Limpieza de texto manteniendo los datos limpios
+        # Limpieza de texto manteniendo los datos impecables
         texto_limpio = re.sub(r'\[\s*!\[Image[^\]]*\]\([^)]+\)\]\([^)]+\)', '', tweet_candidato)
         texto_limpio = re.sub(r'!\[Image[^\]]*\]\([^)]+\)', '', texto_limpio)
         texto_limpio = re.sub(r'@leones_cbbc', '', texto_limpio, flags=re.IGNORECASE)
@@ -103,19 +103,19 @@ def verificar_actualizacion():
         print(f"ID evaluado: {tweet_id} | Memoria previa: {ultimo_tweet_id_memoria}", flush=True)
 
         if tweet_id == ultimo_tweet_id_memoria:
-            print("Esta jugada ya fue publicada anteriormente.", flush=True)
+            print("Esta publicación ya fue enviada anteriormente.", flush=True)
             return
 
-        # Formateamos el mensaje final
+        # Formateamos el mensaje según si trae la imagen oficial de alta resolución
         if imagen_candidata:
-            mensaje = f"🦁🏆 <b>¡Final del juego / Victoria!</b>\n\n{texto_limpio}"
-            print("¡Se detectó una imagen oficial para enviar!", flush=True)
+            mensaje = f"🦁🏆 <b>¡Publicación oficial / Victoria!</b>\n\n{texto_limpio}"
+            print(f"¡Imagen oficial de alta calidad detectada: {imagen_candidata}", flush=True)
         else:
             mensaje = f"🦁⚾ <b>¡Jugada en vivo!</b>\n\n{texto_limpio}"
 
         resultado = enviar_a_telegram(mensaje, url_imagen=imagen_candidata)
         if resultado.get("ok"):
-            print("¡Publicación enviada con éxito al canal!", flush=True)
+            print("¡Enviado con éxito al canal de Telegram!", flush=True)
             ultimo_tweet_id_memoria = tweet_id
         else:
             print(f"Telegram rechazó el envío: {resultado}", flush=True)
@@ -124,8 +124,8 @@ def verificar_actualizacion():
         print(f"Excepción general en la verificación: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con soporte de texto e imágenes multimedia...", flush=True)
-    enviar_a_telegram("🦁🚀 <b>¡Bot actualizado con soporte multimedia para finales de juego!</b>")
+    print("Iniciando bot con filtro de imágenes oficiales de alta calidad...", flush=True)
+    enviar_a_telegram("🦁🚀 <b>¡Bot sintonizado con filtro optimizado para imágenes oficiales!</b>")
 
     while True:
         try:
