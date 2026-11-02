@@ -7,46 +7,97 @@ X_USERNAME = "leones_cbbc"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-ultimo_enlace_memoria = None
+ARCHIVO_MEMORIA = "id_memoria.txt"
 
-def enviar_a_telegram(mensaje, url_multimedia=None, tipo_multimedia="photo"):
-    if url_multimedia:
-        if tipo_multimedia == "video":
+def cargar_memoria():
+    """Carga el último ID de tuit procesado desde disco para sobrevivir a reinicios de Render."""
+    if os.path.exists(ARCHIVO_MEMORIA):
+        try:
+            with open(ARCHIVO_MEMORIA, "r") as f:
+                return f.read().strip()
+        except:
+            return None
+    return None
+
+def guardar_memoria(tweet_id):
+    """Guarda el ID del tuit en disco inmediatamente para evitar spam por reintentos."""
+    try:
+        with open(ARCHIVO_MEMORIA, "w") as f:
+            f.write(str(tweet_id))
+    except Exception as e:
+        print(f"Error al guardar memoria en disco: {e}", flush=True)
+
+def enviar_a_telegram_multimedia(mensaje, lista_multimedia, tipo_multimedia="photo"):
+    """
+    Envía contenido a Telegram. Si hay múltiples imágenes, usa un álbum (sendMediaGroup);
+    si es un solo video o foto, usa sus métodos individuales con soporte de texto (caption).
+    """
+    try:
+        # Caso 1: Múltiples imágenes (Álbum)
+        if tipo_multimedia == "photo" and len(lista_multimedia) > 1:
+            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMediaGroup"
+            media_group = []
+            for idx, img_url in enumerate(lista_multimedia[:10]): # Telegram permite hasta 10
+                item = {
+                    "type": "photo",
+                    "media": img_url
+                }
+                # Añadimos el texto en la primera foto del álbum
+                if idx == 0:
+                    item["caption"] = mensaje
+                    item["parse_mode"] = "HTML"
+                media_group.append(item)
+            
+            payload = {
+                "chat_id": CHAT_ID,
+                "media": media_group
+            }
+            response = requests.post(url, json=payload, timeout=30)
+            return response.json()
+
+        # Caso 2: Un solo video
+        elif tipo_multimedia == "video" and len(lista_multimedia) > 0:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendVideo"
             payload = {
                 "chat_id": CHAT_ID,
-                "video": url_multimedia,
+                "video": lista_multimedia[0],
                 "caption": mensaje,
                 "parse_mode": "HTML"
             }
-        else:
+            response = requests.post(url, json=payload, timeout=30)
+            return response.json()
+
+        # Caso 3: Una sola foto
+        elif tipo_multimedia == "photo" and len(lista_multimedia) == 1:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
             payload = {
                 "chat_id": CHAT_ID,
-                "photo": url_multimedia,
+                "photo": lista_multimedia[0],
                 "caption": mensaje,
                 "parse_mode": "HTML"
             }
-    else:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {
-            "chat_id": CHAT_ID,
-            "text": mensaje,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True
-        }
-        
-    try:
-        response = requests.post(url, json=payload, timeout=30)
-        print(f"Respuesta de Telegram: {response.text}", flush=True)
-        return response.json()
+            response = requests.post(url, json=payload, timeout=30)
+            return response.json()
+
+        # Caso 4: Solo texto (Jugadas #LEO o reportes sin multimedia)
+        else:
+            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": CHAT_ID,
+                "text": mensaje,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True
+            }
+            response = requests.post(url, json=payload, timeout=30)
+            return response.json()
+
     except Exception as err:
         print(f"Error crítico al conectar con Telegram: {err}", flush=True)
         return {}
 
 def verificar_actualizacion():
-    global ultimo_enlace_memoria
-    print(f"Buscando jugadas y publicaciones oficiales para @{X_USERNAME}...", flush=True)
+    ultimo_enlace_memoria = cargar_memoria()
+    print(f"Buscando actualizaciones para @{X_USERNAME}...", flush=True)
     
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}"
     
@@ -73,46 +124,61 @@ def verificar_actualizacion():
         
         tweet_candidato = None
         enlace_candidato = None
-        multimedia_url = None
-        tipo_multimedia = "photo"
+        lista_imagenes = []
+        video_url = None
         
         for i, linea in enumerate(lineas):
             if "Única cuenta oficial" in linea or "títulos de la LVBP" in linea:
                 continue
 
-            # Detectamos tanto las jugadas (#LEO / #leo) como las publicaciones oficiales (#CaraquistaSoy)
-            if any(tag in linea for tag in ["#LEO", "#leo", "#CaraquistaSoy", "#caraquistasoy"]):
+            # Detectamos cualquiera de las etiquetas clave (#LEO o #CaraquistaSoy en cualquier variante de mayúsculas/minúsculas)
+            if any(tag in linea.lower() for tag in ["#leo", "#caraquistasoy"]):
                 
-                # Rescatamos el texto real tomando la línea del hashtag y la línea inmediatamente superior si existe
-                texto_tuit = linea
-                if i > 0 and len(lineas[i-1]) > 3 and "Única cuenta" not in lineas[i-1] and "![image" not in lineas[i-1]:
-                    texto_tuit = f"{lineas[i-1]}\n{linea}"
+                # Rescatamos el bloque de texto completo del tuit mirando hacia arriba
+                bloque_texto = []
+                for k in range(max(0, i-4), i+1):
+                    candidata = lineas[k]
+                    if any(x in candidata.lower() for x in ["leones_cbbc", "http://", "https://", "![image"]):
+                        continue
+                    if re.match(r'^\[\s*\d+[mh]\s*\]', candidata):
+                        continue
+                    if len(candidata.strip()) > 2:
+                        bloque_texto.append(candidata)
                 
-                tweet_candidato = texto_tuit
-                
-                # Buscamos el enlace único del tuit para el control anti-duplicados
-                for j in range(max(0, i-5), min(len(lineas), i+6)):
+                if bloque_texto:
+                    tweet_candidato = "\n".join(bloque_texto)
+                else:
+                    tweet_candidato = linea
+
+                # Búsqueda robusta del ID / enlace único del tuit
+                for j in range(max(0, i-6), min(len(lineas), i+7)):
                     match_link = re.search(r'https?://(?:x|twitter)\.com/[^/]+/status/(\d+)', lineas[j])
                     if match_link:
                         enlace_candidato = match_link.group(1)
                         break
                 
-                # Buscamos si hay un video directo (.mp4)
-                for j in range(max(0, i-4), min(len(lineas), i+5)):
+                if not enlace_candidato:
+                    for j in range(max(0, i-6), min(len(lineas), i+7)):
+                        match_id = re.search(r'/status/(\d+)', lineas[j])
+                        if match_id:
+                            enlace_candidato = match_id.group(1)
+                            break
+
+                # 1. Buscamos si hay un video directo (.mp4)
+                for j in range(max(0, i-5), min(len(lineas), i+6)):
                     match_vid = re.search(r'(https?://\S+\.mp4\S*)', lineas[j])
                     if match_vid:
-                        multimedia_url = match_vid.group(1)
-                        tipo_multimedia = "video"
+                        video_url = match_vid.group(1)
                         break
                 
-                # Si no hay video, buscamos la foto oficial de alta resolución
-                if not multimedia_url:
-                    for j in range(max(0, i-4), min(len(lineas), i+5)):
+                # 2. Si no hay video, recolectamos TODAS las imágenes oficiales de alta resolución del tuit (para álbumes de 1 o más fotos)
+                if not video_url:
+                    for j in range(max(0, i-5), min(len(lineas), i+6)):
                         match_img = re.search(r'!\[Image[^\]]*\]\((https?://pbs\.twimg\.com/media/[^)]+)\)', lineas[j])
                         if match_img:
-                            multimedia_url = match_img.group(1)
-                            tipo_multimedia = "photo"
-                            break
+                            img_link = match_img.group(1)
+                            if img_link not in lista_imagenes:
+                                lista_imagenes.append(img_link)
                 break
 
         if not tweet_candidato:
@@ -120,15 +186,15 @@ def verificar_actualizacion():
             return
 
         if not enlace_candidato:
-            enlace_candidato = tweet_candidato[:30]
+            enlace_candidato = str(hash(tweet_candidato[:50]))
 
-        print(f"ID/Enlace evaluado: {enlace_candidato} | Memoria previa: {ultimo_enlace_memoria}", flush=True)
+        print(f"ID evaluado: {enlace_candidato} | Memoria previa en disco: {ultimo_enlace_memoria}", flush=True)
 
         if enlace_candidato == ultimo_enlace_memoria:
-            print("Esta publicación ya fue enviada (bloqueada).", flush=True)
+            print("Esta publicación ya fue enviada anteriormente (duplicado bloqueado).", flush=True)
             return
 
-        # --- LIMPIEZA LIMPIA Y SEGURA DEL TEXTO ---
+        # --- LIMPIEZA INTELIGENTE DE TEXTO ---
         texto_limpio = tweet_candidato
         texto_limpio = re.sub(r'\[\s*\d+[mh]\s*\]', '', texto_limpio)
         texto_limpio = re.sub(r'\[Video\s*\d*\]', '', texto_limpio, flags=re.IGNORECASE)
@@ -142,31 +208,38 @@ def verificar_actualizacion():
         texto_limpio = texto_limpio.replace('*', '').replace('  ', ' ').strip()
 
         if len(texto_limpio) < 3:
-            texto_limpio = "¡Acción de los Leones del Caracas!"
+            texto_limpio = "¡Acción oficial de los Leones del Caracas!"
 
-        # Formato de mensaje adaptado
-        if multimedia_url:
-            if tipo_multimedia == "video":
-                mensaje = f"🦁🎥 <b>{texto_limpio}</b>"
-            else:
-                mensaje = f"🦁🏆 <b>{texto_limpio}</b>"
+        # Formateo de encabezados según el tipo de contenido
+        if video_url:
+            mensaje = f"🦁🎥 <b>{texto_limpio}</b>"
+            tipo_m = "video"
+            multimedia_a_enviar = [video_url]
+        elif len(lista_imagenes) > 0:
+            mensaje = f"🦁🏆 <b>{texto_limpio}</b>"
+            tipo_m = "photo"
+            multimedia_a_enviar = lista_imagenes
         else:
+            # Jugada a jugada (#LEO con rivales variables como #CAR, #TIG, etc.)
             mensaje = f"🦁⚾ <b>{texto_limpio}</b>"
+            tipo_m = "photo"
+            multimedia_a_enviar = []
 
-        ultimo_enlace_memoria = enlace_candidato
+        # Guardamos en disco ANTES de enviar para garantizar cero duplicados por reintentos o reinicios de Render
+        guardar_memoria(enlace_candidato)
 
-        resultado = enviar_a_telegram(mensaje, url_multimedia=multimedia_url, tipo_multimedia=tipo_multimedia)
+        resultado = enviar_a_telegram_multimedia(mensaje, multimedia_a_enviar, tipo_m)
         if resultado.get("ok"):
-            print("¡Publicación enviada con éxito conservando su texto!", flush=True)
+            print("¡Publicación procesada y enviada con éxito!", flush=True)
         else:
-            print(f"Telegram rechazó el envío multimedia (intentando por texto plano): {resultado}", flush=True)
-            enviar_a_telegram(mensaje)
+            print(f"Telegram rechazó el envío multimedia (intentando respaldo de texto plano): {resultado}", flush=True)
+            enviar_a_telegram_multimedia(mensaje, [], "photo")
 
     except Exception as e:
         print(f"Excepción general en la verificación: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con recuperación de texto y soporte multimedia...", flush=True)
+    print("Iniciando bot definitivo para Leones del Caracas...", flush=True)
 
     while True:
         try:
