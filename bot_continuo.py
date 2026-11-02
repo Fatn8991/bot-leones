@@ -27,11 +27,13 @@ def guardar_memoria(tweet_id):
 
 def enviar_a_telegram_multimedia(mensaje, lista_multimedia, tipo_multimedia="photo"):
     try:
+        # Si hay varias imágenes, las enviamos estrictamente COMO UN ÁLBUM ÚNICO
         if tipo_multimedia == "photo" and len(lista_multimedia) > 1:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMediaGroup"
             media_group = []
             for idx, img_url in enumerate(lista_multimedia[:10]):
                 item = {"type": "photo", "media": img_url}
+                # Colocamos el texto descriptivo únicamente en la primera foto del álbum
                 if idx == 0:
                     item["caption"] = mensaje
                     item["parse_mode"] = "HTML"
@@ -113,10 +115,9 @@ def verificar_actualizacion():
             if "Única cuenta oficial" in linea or "títulos de la LVBP" in linea:
                 continue
 
-            # Buscamos por etiquetas oficiales de los Leones
             if any(tag in linea.lower() for tag in ["#leo", "#caraquistasoy"]):
                 
-                # Búsqueda del ID único del tuit
+                # Búsqueda rigurosa del ID del tuit
                 for j in range(max(0, i-4), min(len(lineas), i+5)):
                     match_link = re.search(r'https?://(?:x|twitter)\.com/[^/]+/status/(\d+)', lineas[j])
                     if match_link:
@@ -130,7 +131,7 @@ def verificar_actualizacion():
                             enlace_candidato = match_id.group(1)
                             break
 
-                # Recopilamos el texto limpio del tuit sin metadatos
+                # Extracción del bloque de texto limpio
                 bloque_texto = []
                 for k in range(max(0, i-3), i+1):
                     candidata = lineas[k]
@@ -140,7 +141,7 @@ def verificar_actualizacion():
                         continue
                     if re.match(r'^\[\s*\d+[mh]\s*\]', candidata):
                         continue
-                    if re.match(r'^[\d\s\.,kKmMBb/:-]+$', candidata) and len(candidata) < 15:
+                    if re.match(r'^[\d\s\.,kKmMBb/:-]+\$', candidata) and len(candidata) < 15:
                         continue
                         
                     if len(candidata.strip()) > 2:
@@ -151,16 +152,16 @@ def verificar_actualizacion():
                 else:
                     tweet_candidato = linea
 
-                # Búsqueda de video
-                for j in range(max(0, i-2), min(len(lineas), i+3)):
+                # Búsqueda de video (.mp4)
+                for j in range(max(0, i-3), min(len(lineas), i+4)):
                     match_vid = re.search(r'(https?://\S+\.mp4\S*)', lineas[j])
                     if match_vid:
                         video_url = match_vid.group(1)
                         break
                 
-                # Búsqueda de imágenes para álbumes o fotos individuales
+                # RECOLECCIÓN GLOBAL DE TODAS LAS IMÁGENES DEL TUIT ACTUAL (evita duplicados de galería)
                 if not video_url:
-                    for j in range(max(0, i-2), min(len(lineas), i+3)):
+                    for j in range(max(0, i-3), min(len(lineas), i+4)):
                         match_img = re.search(r'!\[Image[^\]]*\]\((https?://pbs\.twimg\.com/media/[^)]+)\)', lineas[j])
                         if match_img:
                             img_link = match_img.group(1)
@@ -175,73 +176,4 @@ def verificar_actualizacion():
         if not enlace_candidato:
             enlace_candidato = str(hash(tweet_candidato[:50]))
 
-        print(f"ID evaluado: {enlace_candidato} | Memoria previa en disco: {ultimo_enlace_memoria}", flush=True)
-
-        if enlace_candidato == ultimo_enlace_memoria:
-            print("Esta publicación ya fue enviada anteriormente (duplicado bloqueado).", flush=True)
-            return
-
-        # --- LIMPIEZA QUIRÚRGICA Y PROFUNDA DE CARACTERES ---
-        texto_limpio = tweet_candidato
-        # Eliminar sintaxis de markdown residuales, corchetes vacíos, etc.
-        texto_limpio = re.sub(r'\[\s*\]', '', texto_limpio)
-        texto_limpio = re.sub(r'\(\s*\)', '', texto_limpio)
-        texto_limpio = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', texto_limpio)
-        texto_limpio = re.sub(r'!\[Image[^\]]*\]\([^)]+\)', '', texto_limpio)
-        texto_limpio = re.sub(r'\(blob:[^)]+\)', '', texto_limpio)
-        texto_limpio = re.sub(r'blob:\S+', '', texto_limpio)
-        texto_limpio = re.sub(r'\[\s*\d+[mh]\s*\]', '', texto_limpio)
-        texto_limpio = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}', '', texto_limpio, flags=re.IGNORECASE)
-        texto_limpio = re.sub(r'Caracas,\s+Venezuela', '', texto_limpio, flags=re.IGNORECASE)
-        texto_limpio = re.sub(r'@\w+', '', texto_limpio)
-        texto_limpio = re.sub(r'https?://\S+', '', texto_limpio)
-        
-        # Eliminar líneas numéricas de interacciones sueltas
-        lineas_limpias = []
-        for l in texto_limpio.split("\n"):
-            l_str = l.strip()
-            if re.match(r'^[\d\s\.,kKmMBb]+$', l_str) and len(l_str) < 15:
-                continue
-            if l_str:
-                lineas_limpias.append(l_str)
-                
-        texto_limpio = "\n".join(lineas_limpias)
-        texto_limpio = texto_limpio.replace('*', '').replace('[', '').replace(']', '').replace('  ', ' ').strip()
-
-        if len(texto_limpio) < 3:
-            texto_limpio = "¡Información oficial de los Leones del Caracas!"
-
-        # Formato visual limpio para Telegram
-        mensaje = f"🦁⚾ <b>{texto_limpio}</b>"
-
-        if video_url:
-            tipo_m = "video"
-            multimedia_a_enviar = [video_url]
-        elif len(lista_imagenes) > 0:
-            tipo_m = "photo"
-            multimedia_a_enviar = lista_imagenes
-        else:
-            tipo_m = "photo"
-            multimedia_a_enviar = []
-
-        guardar_memoria(enlace_candidato)
-
-        resultado = enviar_a_telegram_multimedia(mensaje, multimedia_a_enviar, tipo_m)
-        if resultado.get("ok"):
-            print("¡Publicación enviada con formato limpio y sin corchetes!", flush=True)
-        else:
-            print(f"Telegram rechazó el envío multimedia (intentando texto plano): {resultado}", flush=True)
-            enviar_a_telegram_multimedia(mensaje, [], "photo")
-
-    except Exception as e:
-        print(f"Excepción general en la verificación: {e}", flush=True)
-
-if __name__ == "__main__":
-    print("Iniciando bot con purga total de corchetes y formato limpio...", flush=True)
-
-    while True:
-        try:
-            verificar_actualizacion()
-        except Exception as err:
-            print(f"Error atrapado en el bucle principal: {err}", flush=True)
-        time.sleep(15)
+        print(f"ID evaluado: {enlace_candidato} | Memoria previa en disco: {ultimo_enlace_
