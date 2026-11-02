@@ -79,7 +79,7 @@ def enviar_a_telegram_multimedia(mensaje, lista_multimedia, tipo_multimedia="pho
 
 def verificar_actualizacion():
     ultimo_enlace_memoria = cargar_memoria()
-    print(f"Buscando actualizaciones sincronizadas para @{X_USERNAME}...", flush=True)
+    print(f"Buscando actualizaciones para @{X_USERNAME}...", flush=True)
     
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}"
     
@@ -113,27 +113,26 @@ def verificar_actualizacion():
             if "Única cuenta oficial" in linea or "títulos de la LVBP" in linea:
                 continue
 
-            # Detectamos la línea exacta donde está el tuit por su etiqueta oficial
+            # Buscamos por etiquetas oficiales de los Leones
             if any(tag in linea.lower() for tag in ["#leo", "#caraquistasoy"]):
                 
-                # 1. ENCONTRAR EL ID DEL TUIT (búsqueda muy cercana al índice actual)
-                for j in range(max(0, i-3), min(len(lineas), i+4)):
+                # Búsqueda del ID único del tuit
+                for j in range(max(0, i-4), min(len(lineas), i+5)):
                     match_link = re.search(r'https?://(?:x|twitter)\.com/[^/]+/status/(\d+)', lineas[j])
                     if match_link:
                         enlace_candidato = match_link.group(1)
                         break
                 
                 if not enlace_candidato:
-                    for j in range(max(0, i-3), min(len(lineas), i+4)):
+                    for j in range(max(0, i-4), min(len(lineas), i+5)):
                         match_id = re.search(r'/status/(\d+)', lineas[j])
                         if match_id:
                             enlace_candidato = match_id.group(1)
                             break
 
-                # 2. EXTRAER EL TEXTO DE FORMA AISLADA (solo el párrafo del tuit actual)
+                # Recopilamos el texto limpio del tuit sin metadatos
                 bloque_texto = []
-                # Recorremos un rango estrecho hacia arriba desde el hashtag
-                for k in range(max(0, i-2), i+1):
+                for k in range(max(0, i-3), i+1):
                     candidata = lineas[k]
                     c_lower = candidata.lower()
                     
@@ -141,7 +140,6 @@ def verificar_actualizacion():
                         continue
                     if re.match(r'^\[\s*\d+[mh]\s*\]', candidata):
                         continue
-                    # Ignorar contadores de métricas sueltos
                     if re.match(r'^[\d\s\.,kKmMBb/:-]+$', candidata) and len(candidata) < 15:
                         continue
                         
@@ -153,17 +151,16 @@ def verificar_actualizacion():
                 else:
                     tweet_candidato = linea
 
-                # 3. VINCULACIÓN ESTRICTA DE MULTIMEDIA (exclusivamente en el entorno directo del hashtag)
-                # Buscamos video (.mp4)
-                for j in range(max(0, i-2), min(len(lineas), i+2)):
+                # Búsqueda de video
+                for j in range(max(0, i-2), min(len(lineas), i+3)):
                     match_vid = re.search(r'(https?://\S+\.mp4\S*)', lineas[j])
                     if match_vid:
                         video_url = match_vid.group(1)
                         break
                 
-                # Buscamos imágenes asociadas unívocamente a este bloque de tuit
+                # Búsqueda de imágenes para álbumes o fotos individuales
                 if not video_url:
-                    for j in range(max(0, i-2), min(len(lineas), i+2)):
+                    for j in range(max(0, i-2), min(len(lineas), i+3)):
                         match_img = re.search(r'!\[Image[^\]]*\]\((https?://pbs\.twimg\.com/media/[^)]+)\)', lineas[j])
                         if match_img:
                             img_link = match_img.group(1)
@@ -184,27 +181,38 @@ def verificar_actualizacion():
             print("Esta publicación ya fue enviada anteriormente (duplicado bloqueado).", flush=True)
             return
 
-        # --- PURGA Y LIMPIEZA TOTAL DE MÉTRICAS ---
+        # --- LIMPIEZA QUIRÚRGICA Y PROFUNDA DE CARACTERES ---
         texto_limpio = tweet_candidato
-        texto_limpio = re.sub(r'\b\d+\s+\d+\s+[\d\.,kKmMBb]+\b', '', texto_limpio)
-        texto_limpio = re.sub(r'\b\d+(\.\d+)?[kKmMBb]\b', '', texto_limpio)
-        texto_limpio = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}', '', texto_limpio, flags=re.IGNORECASE)
-        texto_limpio = re.sub(r'Caracas,\s+Venezuela', '', texto_limpio, flags=re.IGNORECASE)
-        texto_limpio = re.sub(r'\[\s*\d+[mh]\s*\]', '', texto_limpio)
-        texto_limpio = re.sub(r'\[Video\s*\d*\]', '', texto_limpio, flags=re.IGNORECASE)
+        # Eliminar sintaxis de markdown residuales, corchetes vacíos, etc.
+        texto_limpio = re.sub(r'\[\s*\]', '', texto_limpio)
+        texto_limpio = re.sub(r'\(\s*\)', '', texto_limpio)
+        texto_limpio = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', texto_limpio)
+        texto_limpio = re.sub(r'!\[Image[^\]]*\]\([^)]+\)', '', texto_limpio)
         texto_limpio = re.sub(r'\(blob:[^)]+\)', '', texto_limpio)
         texto_limpio = re.sub(r'blob:\S+', '', texto_limpio)
-        texto_limpio = re.sub(r'!\[Image[^\]]*\]\([^)]+\)', '', texto_limpio)
-        texto_limpio = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', texto_limpio)
+        texto_limpio = re.sub(r'\[\s*\d+[mh]\s*\]', '', texto_limpio)
+        texto_limpio = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}', '', texto_limpio, flags=re.IGNORECASE)
+        texto_limpio = re.sub(r'Caracas,\s+Venezuela', '', texto_limpio, flags=re.IGNORECASE)
         texto_limpio = re.sub(r'@\w+', '', texto_limpio)
         texto_limpio = re.sub(r'https?://\S+', '', texto_limpio)
-        texto_limpio = re.sub(r'[\(\)\[\]]', '', texto_limpio)
-        texto_limpio = texto_limpio.replace('*', '').replace('  ', ' ').strip()
+        
+        # Eliminar líneas numéricas de interacciones sueltas
+        lineas_limpias = []
+        for l in texto_limpio.split("\n"):
+            l_str = l.strip()
+            if re.match(r'^[\d\s\.,kKmMBb]+$', l_str) and len(l_str) < 15:
+                continue
+            if l_str:
+                lineas_limpias.append(l_str)
+                
+        texto_limpio = "\n".join(lineas_limpias)
+        texto_limpio = texto_limpio.replace('*', '').replace('[', '').replace(']', '').replace('  ', ' ').strip()
 
         if len(texto_limpio) < 3:
             texto_limpio = "¡Información oficial de los Leones del Caracas!"
 
-        mensaje = f"{texto_limpio}"
+        # Formato visual limpio para Telegram
+        mensaje = f"🦁⚾ <b>{texto_limpio}</b>"
 
         if video_url:
             tipo_m = "video"
@@ -220,7 +228,7 @@ def verificar_actualizacion():
 
         resultado = enviar_a_telegram_multimedia(mensaje, multimedia_a_enviar, tipo_m)
         if resultado.get("ok"):
-            print("¡Publicación enviada con texto e imagen estrictamente sincronizados!", flush=True)
+            print("¡Publicación enviada con formato limpio y sin corchetes!", flush=True)
         else:
             print(f"Telegram rechazó el envío multimedia (intentando texto plano): {resultado}", flush=True)
             enviar_a_telegram_multimedia(mensaje, [], "photo")
@@ -229,7 +237,7 @@ def verificar_actualizacion():
         print(f"Excepción general en la verificación: {e}", flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con sincronización atómica estricta...", flush=True)
+    print("Iniciando bot con purga total de corchetes y formato limpio...", flush=True)
 
     while True:
         try:
