@@ -153,7 +153,9 @@ def verificar_actualizacion():
             print("Monitoreando... No hay tuits nuevos con #LEO o #CaraquistaSoy.", flush=True)
             return
 
+        # --- LIMPIEZA PROFUNDA Y NORMALIZACIÓN DE FIRMA ---
         texto_limpio = tweet_candidato
+        texto_limpio = re.sub(r'!?[Ii]mage\s*\d*:?', '', texto_limpio)
         texto_limpio = re.sub(r'\[\s*\]', '', texto_limpio)
         texto_limpio = re.sub(r'\(\s*\)', '', texto_limpio)
         texto_limpio = re.sub(r'\(blob:[^)]+\)', '', texto_limpio)
@@ -172,15 +174,18 @@ def verificar_actualizacion():
                 lineas_limpias.append(l_str)
                 
         texto_limpio = "\n".join(lineas_limpias)
-        texto_limpio = texto_limpio.replace('*', '').replace('[', '').replace(']', '').replace('  ', ' ').strip()
+        texto_limpio = texto_limpio.replace('*', '').replace('[', '').replace(']', '').replace('(', '').replace(')', '').replace('  ', ' ').strip()
 
         if len(texto_limpio) < 3:
             texto_limpio = "¡Información oficial de los Leones del Caracas!"
 
-        print("Texto evaluado: " + texto_limpio[:40] + " | Memoria previa: " + str(ultimo_texto_memoria[:40] if ultimo_texto_memoria else "Ninguna"), flush=True)
+        # Generamos una firma única basada en caracteres alfanuméricos esenciales para evitar falsos duplicados por variaciones de Jina
+        firma_actual = re.sub(r'[^a-zA-Z0-9]', '', texto_limpio.lower())
 
-        if texto_limpio == ultimo_texto_memoria:
-            print("Este tuit exacto ya fue enviado al canal anteriormente (duplicado bloqueado).", flush=True)
+        print("Firma evaluada: " + firma_actual[:40] + " | Memoria previa: " + str(ultimo_texto_memoria[:40] if ultimo_texto_memoria else "Ninguna"), flush=True)
+
+        if firma_actual == ultimo_texto_memoria:
+            print("Este tuit exacto ya fue enviado al canal anteriormente (duplicado bloqueado por firma limpia).", flush=True)
             return
 
         mensaje = f"🦁⚾ <b>{texto_limpio}</b>"
@@ -195,11 +200,12 @@ def verificar_actualizacion():
             tipo_m = "photo"
             multimedia_a_enviar = []
 
-        guardar_memoria(texto_limpio)
+        # Guardamos la firma limpia normalizada en disco ANTES de enviar
+        guardar_memoria(firma_actual)
 
         resultado = enviar_a_telegram_multimedia(mensaje, multimedia_a_enviar, tipo_m)
         if resultado.get("ok"):
-            print("¡Publicación enviada y guardada en memoria con éxito!", flush=True)
+            print("¡Publicación enviada y firma guardada en memoria con éxito!", flush=True)
         else:
             print("Telegram rechazó el envío multimedia (intentando texto plano): " + str(resultado), flush=True)
             enviar_a_telegram_multimedia(mensaje, [], "photo")
@@ -208,7 +214,7 @@ def verificar_actualizacion():
         print("Excepción general en la verificación: " + str(e), flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con sintaxis limpia y control anti-duplicados...", flush=True)
+    print("Iniciando bot con filtrado avanzado de firmas y cero duplicados...", flush=True)
 
     while True:
         try:
