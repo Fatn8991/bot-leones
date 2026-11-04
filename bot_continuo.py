@@ -7,23 +7,32 @@ X_USERNAME = "leones_cbbc"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-ARCHIVO_MEMORIA = "id_memoria.txt"
+# Memoria en ejecución global para evitar que se repita en caliente
+MEMORIA_GLOBAL = set()
 
-def cargar_memoria():
+# Intentamos precargar los últimos IDs si existe el archivo temporal
+ARCHIVO_MEMORIA = "id_memoria.txt"
+def cargar_memoria_inicial():
     if os.path.exists(ARCHIVO_MEMORIA):
         try:
             with open(ARCHIVO_MEMORIA, "r", encoding="utf-8") as f:
-                return f.read().strip()
+                for linea in f:
+                    limpia = linea.strip()
+                    if limpia:
+                        MEMORIA_GLOBAL.add(limpia)
         except:
-            return None
-    return None
+            pass
 
-def guardar_memoria(tweet_id):
+cargar_memoria_inicial()
+
+def guardar_memoria(firma):
     try:
-        with open(ARCHIVO_MEMORIA, "w", encoding="utf-8") as f:
-            f.write(str(tweet_id))
+        MEMORIA_GLOBAL.add(firma)
+        # Mantenemos un registro en archivo por si acaso
+        with open(ARCHIVO_MEMORIA, "a", encoding="utf-8") as f:
+            f.write(firma + "\n")
     except Exception as e:
-        print("Error al guardar memoria en disco: " + str(e), flush=True)
+        print("Error al guardar memoria: " + str(e), flush=True)
 
 def enviar_a_telegram_multimedia(mensaje, lista_multimedia, tipo_multimedia="photo"):
     try:
@@ -78,7 +87,6 @@ def enviar_a_telegram_multimedia(mensaje, lista_multimedia, tipo_multimedia="pho
         return {}
 
 def verificar_actualizacion():
-    ultimo_texto_memoria = cargar_memoria()
     print("Buscando nuevas publicaciones en @" + X_USERNAME + "...", flush=True)
     
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}"
@@ -153,7 +161,7 @@ def verificar_actualizacion():
             print("Monitoreando... No hay tuits nuevos con #LEO o #CaraquistaSoy.", flush=True)
             return
 
-        # --- LIMPIEZA PROFUNDA Y NORMALIZACIÓN DE FIRMA ---
+        # --- LIMPIEZA Y CREACIÓN DE FIRMA ÚNICA ROBUSTA ---
         texto_limpio = tweet_candidato
         texto_limpio = re.sub(r'!?[Ii]mage\s*\d*:?', '', texto_limpio)
         texto_limpio = re.sub(r'\[\s*\]', '', texto_limpio)
@@ -179,13 +187,13 @@ def verificar_actualizacion():
         if len(texto_limpio) < 3:
             texto_limpio = "¡Información oficial de los Leones del Caracas!"
 
-        # Generamos una firma única basada en caracteres alfanuméricos esenciales para evitar falsos duplicados por variaciones de Jina
-        firma_actual = re.sub(r'[^a-zA-Z0-9]', '', texto_limpio.lower())
+        # Creamos una firma alfanumérica compacta con las primeras 30 letras esenciales del tuit
+        firma_actual = re.sub(r'[^a-zA-Z0-9]', '', texto_limpio.lower())[:30]
 
-        print("Firma evaluada: " + firma_actual[:40] + " | Memoria previa: " + str(ultimo_texto_memoria[:40] if ultimo_texto_memoria else "Ninguna"), flush=True)
+        print("Firma evaluada: " + firma_actual, flush=True)
 
-        if firma_actual == ultimo_texto_memoria:
-            print("Este tuit exacto ya fue enviado al canal anteriormente (duplicado bloqueado por firma limpia).", flush=True)
+        if firma_actual in MEMORIA_GLOBAL:
+            print("Duplicado bloqueado por memoria global en ejecución.", flush=True)
             return
 
         mensaje = f"🦁⚾ <b>{texto_limpio}</b>"
@@ -200,12 +208,12 @@ def verificar_actualizacion():
             tipo_m = "photo"
             multimedia_a_enviar = []
 
-        # Guardamos la firma limpia normalizada en disco ANTES de enviar
+        # Guardamos inmediatamente en la memoria global y en disco
         guardar_memoria(firma_actual)
 
         resultado = enviar_a_telegram_multimedia(mensaje, multimedia_a_enviar, tipo_m)
         if resultado.get("ok"):
-            print("¡Publicación enviada y firma guardada en memoria con éxito!", flush=True)
+            print("¡Publicación enviada y registrada en memoria global!", flush=True)
         else:
             print("Telegram rechazó el envío multimedia (intentando texto plano): " + str(resultado), flush=True)
             enviar_a_telegram_multimedia(mensaje, [], "photo")
@@ -214,7 +222,7 @@ def verificar_actualizacion():
         print("Excepción general en la verificación: " + str(e), flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con filtrado avanzado de firmas y cero duplicados...", flush=True)
+    print("Iniciando bot con memoria global anti-spam...", flush=True)
 
     while True:
         try:
