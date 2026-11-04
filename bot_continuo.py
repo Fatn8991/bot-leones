@@ -119,7 +119,7 @@ def verificar_actualizacion():
                     candidata = lineas[k]
                     c_lower = candidata.lower()
                     
-                    if any(x in c_lower for x in ["leones_cbbc", "http://", "https://", "![image", "born ", "caracas, venezuela", "joined "]):
+                    if any(x in c_lower for x in ["leones_cbbc", "http://", "https://", "image", "born ", "caracas, venezuela", "joined "]):
                         continue
                     if re.match(r'^\[\s*\d+[mh]\s*\]', candidata):
                         continue
@@ -142,7 +142,7 @@ def verificar_actualizacion():
                 
                 if not video_url:
                     for j in range(max(0, i-2), min(len(lineas), i+3)):
-                        match_img = re.search(r'!\[Image[^\]]*\]\((https?://pbs\.twimg\.com/media/[^)]+)\)', lineas[j])
+                        match_img = re.search(r'(https?://pbs\.twimg\.com/media/[^)]+)', lineas[j])
                         if match_img:
                             img_link = match_img.group(1)
                             if img_link not in lista_imagenes:
@@ -156,11 +156,8 @@ def verificar_actualizacion():
         texto_limpio = tweet_candidato
         texto_limpio = re.sub(r'\[\s*\]', '', texto_limpio)
         texto_limpio = re.sub(r'\(\s*\)', '', texto_limpio)
-        texto_limpio = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', texto_limpio)
-        texto_limpio = re.sub(r'!\[Image[^\]]*\]\([^)]+\)', '', texto_limpio)
         texto_limpio = re.sub(r'\(blob:[^)]+\)', '', texto_limpio)
         texto_limpio = re.sub(r'blob:\S+', '', texto_limpio)
-        texto_limpio = re.sub(r'\[\s*\d+[mh]\s*\]', '', texto_limpio)
         texto_limpio = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}', '', texto_limpio, flags=re.IGNORECASE)
         texto_limpio = re.sub(r'Caracas,\s+Venezuela', '', texto_limpio, flags=re.IGNORECASE)
         texto_limpio = re.sub(r'@\w+', '', texto_limpio)
