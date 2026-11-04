@@ -113,10 +113,9 @@ def verificar_actualizacion():
             if "Única cuenta oficial" in linea or "títulos de la LVBP" in linea:
                 continue
 
-            # Detectamos las etiquetas oficiales
             if any(tag in linea.lower() for tag in ["#leo", "#caraquistasoy"]):
                 
-                # BÚSQUEDA ESTRICTA DE ID NUMÉRICO OFICIAL DE X
+                # Búsqueda rigurosa del ID numérico oficial de X
                 for j in range(max(0, i-5), min(len(lineas), i+6)):
                     match_link = re.search(r'https?://(?:x|twitter)\.com/[^/]+/status/(\d+)', lineas[j])
                     if match_link:
@@ -130,11 +129,9 @@ def verificar_actualizacion():
                             enlace_candidato = match_id.group(1)
                             break
 
-                # Si el tuit no tiene ID numérico oficial de X, lo descartamos de inmediato para evitar duplicados falsos
                 if not enlace_candidato:
                     continue
 
-                # Extracción del bloque de texto limpio
                 bloque_texto = []
                 for k in range(max(0, i-3), i+1):
                     candidata = lineas[k]
@@ -155,14 +152,12 @@ def verificar_actualizacion():
                 else:
                     tweet_candidato = linea
 
-                # Búsqueda de video (.mp4)
                 for j in range(max(0, i-3), min(len(lineas), i+4)):
                     match_vid = re.search(r'(https?://\S+\.mp4\S*)', lineas[j])
                     if match_vid:
                         video_url = match_vid.group(1)
                         break
                 
-                # Recolección de imágenes
                 if not video_url:
                     for j in range(max(0, i-3), min(len(lineas), i+4)):
                         match_img = re.search(r'!\[Image[^\]]*\]\((https?://pbs\.twimg\.com/media/[^)]+)\)', lineas[j])
@@ -182,7 +177,6 @@ def verificar_actualizacion():
             print("Esta publicación ya fue enviada anteriormente (duplicado bloqueado por ID).", flush=True)
             return
 
-        # --- LIMPIEZA DE TEXTO ---
         texto_limpio = tweet_candidato
         texto_limpio = re.sub(r'\[\s*\]', '', texto_limpio)
         texto_limpio = re.sub(r'\(\s*\)', '', texto_limpio)
@@ -222,7 +216,6 @@ def verificar_actualizacion():
             tipo_m = "photo"
             multimedia_a_enviar = []
 
-        # Guardamos el ID oficial en disco antes de enviar
         guardar_memoria(enlace_candidato)
 
         resultado = enviar_a_telegram_multimedia(mensaje, multimedia_a_enviar, tipo_m)
@@ -236,7 +229,7 @@ def verificar_actualizacion():
         print("Excepción general en la verificación: " + str(e), flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con control estricto de ID de tuit...", flush=True)
+    print("Iniciando bot con sintaxis corregida...", flush=True)
 
     while True:
         try:
