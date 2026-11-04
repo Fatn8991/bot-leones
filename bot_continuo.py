@@ -25,7 +25,7 @@ cargar_memoria()
 
 def guardar_memoria(identificador):
     try:
-        if identificador not in MEMORIA_GLOBAL:
+        if identificador and identificador not in MEMORIA_GLOBAL:
             MEMORIA_GLOBAL.add(identificador)
             with open(ARCHIVO_MEMORIA, "a", encoding="utf-8") as f:
                 f.write(identificador + "\n")
@@ -121,7 +121,6 @@ def verificar_actualizacion():
 
             if any(tag in linea.lower() for tag in ["#leo", "#caraquistasoy"]):
                 
-                # Buscamos de forma prioritaria el ID numérico real del tuit en los alrededores
                 for j in range(max(0, i-5), min(len(lineas), i+6)):
                     match_link = re.search(r'https?://(?:x|twitter)\.com/[^/]+/status/(\d+)', lineas[j])
                     if match_link:
@@ -159,8 +158,10 @@ def verificar_actualizacion():
                         match_img = re.search(r'(https?://pbs\.twimg\.com/media/[^)]+)', lineas[j])
                         if match_img:
                             img_link = match_img.group(1)
-                            if img_link not in lista_imagenes:
-                                lista_imagenes.append(img_link)
+                            # Limpiamos parámetros de URL de la imagen para tener una firma limpia y única
+                            img_base = img_link.split('?')[0]
+                            if img_base not in lista_imagenes:
+                                lista_imagenes.append(img_base)
                 break
 
         if not tweet_candidato:
@@ -193,14 +194,24 @@ def verificar_actualizacion():
         if len(texto_limpio) < 3:
             texto_limpio = "¡Información oficial de los Leones del Caracas!"
 
-        # Si tenemos el ID oficial de X lo usamos como identificador absoluto; si no, usamos el texto completo sin cortes
-        identificador_unico = enlace_candidato if enlace_candidato else re.sub(r'[^a-zA-Z0-9]', '', texto_limpio.lower())
+        # Identificador absoluto: usamos el ID del tuit, o el enlace de la primera imagen si existe, o el texto normalizado
+        if enlace_candidato:
+            identificador_unico = enlace_candidato
+        elif len(lista_imagenes) > 0:
+            identificador_unico = lista_imagenes[0]
+        else:
+            identificador_unico = re.sub(r'[^a-zA-Z0-9]', '', texto_limpio.lower())
 
-        print("Identificador evaluado: " + identificador_unico[:50], flush=True)
+        print("Identificador evaluado: " + identificador_unico[:60], flush=True)
 
         if identificador_unico in MEMORIA_GLOBAL:
-            print("Duplicado exacto bloqueado por la memoria global.", flush=True)
+            print("Duplicado bloqueado: este tuit o imagen ya fue procesado anteriormente.", flush=True)
             return
+
+        # Si el tuit trae varias imágenes, guardamos también todas sus imágenes individuales en la memoria para evitar reenvíos cruzados
+        guardar_memoria(identificador_unico)
+        for img in lista_imagenes:
+            guardar_memoria(img)
 
         mensaje = f"🦁⚾ <b>{texto_limpio}</b>"
 
@@ -214,9 +225,6 @@ def verificar_actualizacion():
             tipo_m = "photo"
             multimedia_a_enviar = []
 
-        # Guardamos en la memoria global y en disco ANTES de enviar
-        guardar_memoria(identificador_unico)
-
         resultado = enviar_a_telegram_multimedia(mensaje, multimedia_a_enviar, tipo_m)
         if resultado.get("ok"):
             print("¡Publicación enviada y registrada con éxito!", flush=True)
@@ -228,7 +236,7 @@ def verificar_actualizacion():
         print("Excepción general en la verificación: " + str(e), flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con identificadores absolutos y cero spam...", flush=True)
+    print("Iniciando bot con bloqueo estricto de imágenes duplicadas...", flush=True)
 
     while True:
         try:
