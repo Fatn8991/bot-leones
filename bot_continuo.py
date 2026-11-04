@@ -2,13 +2,14 @@ import requests
 import os
 import time
 import re
+import hashlib
 
 X_USERNAME = "leones_cbbc"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 ARCHIVO_MEMORIA = "id_memoria.txt"
-MEMORIA_GLOBAL = set()
+HISTORIAL_ENVIADOS = set()
 
 def cargar_memoria():
     if os.path.exists(ARCHIVO_MEMORIA):
@@ -17,7 +18,7 @@ def cargar_memoria():
                 for linea in f:
                     limpia = linea.strip()
                     if limpia:
-                        MEMORIA_GLOBAL.add(limpia)
+                        HISTORIAL_ENVIADOS.add(limpia)
         except:
             pass
 
@@ -25,68 +26,50 @@ cargar_memoria()
 
 def guardar_memoria(identificador):
     try:
-        if identificador and identificador not in MEMORIA_GLOBAL:
-            MEMORIA_GLOBAL.add(identificador)
+        if identificador and identificador not in HISTORIAL_ENVIADOS:
+            HISTORIAL_ENVIADOS.add(identificador)
+            # Mantenemos un archivo local robusto
             with open(ARCHIVO_MEMORIA, "a", encoding="utf-8") as f:
                 f.write(identificador + "\n")
     except Exception as e:
-        print("Error al guardar memoria: " + str(e), flush=True)
+        print("Error al guardar en disco: " + str(e), flush=True)
 
-def enviar_a_telegram_multimedia(mensaje, lista_multimedia, tipo_multimedia="photo"):
+def enviar_a_telegram(mensaje, multimedia, tipo_m):
     try:
-        if tipo_multimedia == "photo" and len(lista_multimedia) > 1:
+        if tipo_m == "photo" and len(multimedia) > 1:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMediaGroup"
             media_group = []
-            for idx, img_url in enumerate(lista_multimedia[:10]):
-                item = {"type": "photo", "media": img_url}
+            for idx, img in enumerate(multimedia[:10]):
+                item = {"type": "photo", "media": img}
                 if idx == 0:
                     item["caption"] = mensaje
                     item["parse_mode"] = "HTML"
                 media_group.append(item)
-            payload = {"chat_id": CHAT_ID, "media": media_group}
-            response = requests.post(url, json=payload, timeout=30)
-            return response.json()
+            res = requests.post(url, json={"chat_id": CHAT_ID, "media": media_group}, timeout=30)
+            return res.json()
 
-        elif tipo_multimedia == "video" and len(lista_multimedia) > 0:
+        elif tipo_m == "video" and len(multimedia) > 0:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendVideo"
-            payload = {
-                "chat_id": CHAT_ID,
-                "video": lista_multimedia[0],
-                "caption": mensaje,
-                "parse_mode": "HTML"
-            }
-            response = requests.post(url, json=payload, timeout=30)
-            return response.json()
+            payload = {"chat_id": CHAT_ID, "video": multimedia[0], "caption": mensaje, "parse_mode": "HTML"}
+            res = requests.post(url, json=payload, timeout=30)
+            return res.json()
 
-        elif tipo_multimedia == "photo" and len(lista_multimedia) == 1:
+        elif tipo_m == "photo" and len(multimedia) == 1:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-            payload = {
-                "chat_id": CHAT_ID,
-                "photo": lista_multimedia[0],
-                "caption": mensaje,
-                "parse_mode": "HTML"
-            }
-            response = requests.post(url, json=payload, timeout=30)
-            return response.json()
+            payload = {"chat_id": CHAT_ID, "photo": multimedia[0], "caption": mensaje, "parse_mode": "HTML"}
+            res = requests.post(url, json=payload, timeout=30)
+            return res.json()
 
         else:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-            payload = {
-                "chat_id": CHAT_ID,
-                "text": mensaje,
-                "parse_mode": "HTML",
-                "disable_web_page_preview": True
-            }
-            response = requests.post(url, json=payload, timeout=30)
-            return response.json()
-
+            payload = {"chat_id": CHAT_ID, "text": mensaje, "parse_mode": "HTML", "disable_web_page_preview": True}
+            res = requests.post(url, json=payload, timeout=30)
+            return res.json()
     except Exception as err:
-        print("Error crítico al conectar con Telegram: " + str(err), flush=True)
+        print("Error en Telegram: " + str(err), flush=True)
         return {}
 
 def verificar_actualizacion():
-    print("Buscando nuevas publicaciones en @" + X_USERNAME + "...", flush=True)
-    
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}"
     
     try:
@@ -98,21 +81,19 @@ def verificar_actualizacion():
         response = requests.get(url_api, headers=headers, timeout=20)
         
         if response.status_code != 200:
-            print("Error HTTP del conector Jina: " + str(response.status_code), flush=True)
+            print("Error HTTP Jina: " + str(response.status_code), flush=True)
             return
 
         data = response.json()
-        contenido_markdown = data.get("data", {}).get("content", "")
+        contenido = data.get("data", {}).get("content", "")
         
-        if not contenido_markdown:
-            print("El conector devolvió contenido vacío.", flush=True)
+        if not contenido:
             return
 
-        lineas = [l.strip() for l in contenido_markdown.split("\n") if l.strip()]
+        lineas = [l.strip() for l in contenido.split("\n") if l.strip()]
         
-        tweet_candidato = None
-        enlace_candidato = None
-        lista_imagenes = []
+        tweet_texto = None
+        imagenes = []
         video_url = None
         
         for i, linea in enumerate(lineas):
@@ -121,126 +102,84 @@ def verificar_actualizacion():
 
             if any(tag in linea.lower() for tag in ["#leo", "#caraquistasoy"]):
                 
-                for j in range(max(0, i-5), min(len(lineas), i+6)):
-                    match_link = re.search(r'https?://(?:x|twitter)\.com/[^/]+/status/(\d+)', lineas[j])
-                    if match_link:
-                        enlace_candidato = match_link.group(1)
-                        break
-                
-                bloque_texto = []
+                # Extracción limpia del bloque de texto asociado al tuit
+                bloque = []
                 for k in range(max(0, i-2), i+1):
-                    candidata = lineas[k]
-                    c_lower = candidata.lower()
-                    
-                    if any(x in c_lower for x in ["leones_cbbc", "http://", "https://", "image", "born ", "caracas, venezuela", "joined "]):
+                    cand = lineas[k]
+                    c_low = cand.lower()
+                    if any(x in c_low for x in ["leones_cbbc", "http://", "https://", "image", "born ", "caracas, venezuela", "joined "]):
                         continue
-                    if re.match(r'^\[\s*\d+[mh]\s*\]', candidata):
+                    if re.match(r'^\[\s*\d+[mh]\s*\]', cand) or (len(cand) < 15 and re.match(r'^[\d\s\.,kKmMBb/:-]+$', cand)):
                         continue
-                    if re.match(r'^[\d\s\.,kKmMBb/:-]+$', candidata) and len(candidata) < 15:
-                        continue
-                        
-                    if len(candidata.strip()) > 2:
-                        bloque_texto.append(candidata)
+                    if len(cand.strip()) > 2:
+                        bloque.append(cand)
                 
-                if bloque_texto:
-                    tweet_candidato = "\n".join(bloque_texto)
-                else:
-                    tweet_candidato = linea
+                tweet_texto = "\n".join(bloque) if bloque else linea
 
+                # Búsqueda de video o imágenes
                 for j in range(max(0, i-2), min(len(lineas), i+3)):
-                    match_vid = re.search(r'(https?://\S+\.mp4\S*)', lineas[j])
-                    if match_vid:
-                        video_url = match_vid.group(1)
+                    match_v = re.search(r'(https?://\S+\.mp4\S*)', lineas[j])
+                    if match_v:
+                        video_url = match_v.group(1)
                         break
                 
                 if not video_url:
                     for j in range(max(0, i-2), min(len(lineas), i+3)):
                         match_img = re.search(r'(https?://pbs\.twimg\.com/media/[^)]+)', lineas[j])
                         if match_img:
-                            img_link = match_img.group(1)
-                            # Limpiamos parámetros de URL de la imagen para tener una firma limpia y única
-                            img_base = img_link.split('?')[0]
-                            if img_base not in lista_imagenes:
-                                lista_imagenes.append(img_base)
+                            img_url = match_img.group(1).split('?')[0]
+                            if img_url not in imagenes:
+                                imagenes.append(img_url)
                 break
 
-        if not tweet_candidato:
-            print("Monitoreando... No hay tuits nuevos con #LEO o #CaraquistaSoy.", flush=True)
+        if not tweet_texto:
             return
 
-        # --- LIMPIEZA Y NORMALIZACIÓN DEL TEXTO ---
-        texto_limpio = tweet_candidato
-        texto_limpio = re.sub(r'!?[Ii]mage\s*\d*:?', '', texto_limpio)
-        texto_limpio = re.sub(r'\[\s*\]', '', texto_limpio)
-        texto_limpio = re.sub(r'\(\s*\)', '', texto_limpio)
-        texto_limpio = re.sub(r'\(blob:[^)]+\)', '', texto_limpio)
-        texto_limpio = re.sub(r'blob:\S+', '', texto_limpio)
-        texto_limpio = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}', '', texto_limpio, flags=re.IGNORECASE)
-        texto_limpio = re.sub(r'Caracas,\s+Venezuela', '', texto_limpio, flags=re.IGNORECASE)
-        texto_limpio = re.sub(r'@\w+', '', texto_limpio)
-        texto_limpio = re.sub(r'https?://\S+', '', texto_limpio)
+        # --- LIMPIEZA PROFUNDA ---
+        limpio = tweet_texto
+        limpio = re.sub(r'!?[Ii]mage\s*\d*:?', '', limpio)
+        limpio = re.sub(r'\[\s*\]|\(\s*\)|\(blob:[^)]+\)|blob:\S+', '', limpio)
+        limpio = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}|Caracas,\s+Venezuela', '', limpio, flags=re.IGNORECASE)
+        limpio = re.sub(r'@\w+|https?://\S+', '', limpio)
         
-        lineas_limpias = []
-        for l in texto_limpio.split("\n"):
-            l_str = l.strip()
-            if re.match(r'^[\d\s\.,kKmMBb]+$', l_str) and len(l_str) < 15:
-                continue
-            if l_str:
-                lineas_limpias.append(l_str)
-                
-        texto_limpio = "\n".join(lineas_limpias)
-        texto_limpio = texto_limpio.replace('*', '').replace('[', '').replace(']', '').replace('(', '').replace(')', '').replace('  ', ' ').strip()
+        lineas_L = [l.strip() for l in limpio.split("\n") if l.strip() and not (len(l.strip()) < 15 and re.match(r'^[\d\s\.,kKmMBb]+$', l.strip()))]
+        limpio = "\n".join(lineas_L).replace('*', '').replace('[', '').replace(']', '').replace('(', '').replace(')', '').replace('  ', ' ').strip()
 
-        if len(texto_limpio) < 3:
-            texto_limpio = "¡Información oficial de los Leones del Caracas!"
+        if len(limpio) < 3:
+            limpio = "¡Información oficial de los Leones del Caracas!"
 
-        # Identificador absoluto: usamos el ID del tuit, o el enlace de la primera imagen si existe, o el texto normalizado
-        if enlace_candidato:
-            identificador_unico = enlace_candidato
-        elif len(lista_imagenes) > 0:
-            identificador_unico = lista_imagenes[0]
-        else:
-            identificador_unico = re.sub(r'[^a-zA-Z0-9]', '', texto_limpio.lower())
+        # Generador de Hash MD5 único basado estrictamente en el texto alfanumérico limpio
+        firma_texto = re.sub(r'[^a-zA-Z0-9]', '', limpio.lower())
+        hash_id = hashlib.md5(firma_texto.encode('utf-8')).hexdigest()
 
-        print("Identificador evaluado: " + identificador_unico[:60], flush=True)
+        print("Hash evaluado: " + hash_id, flush=True)
 
-        if identificador_unico in MEMORIA_GLOBAL:
-            print("Duplicado bloqueado: este tuit o imagen ya fue procesado anteriormente.", flush=True)
+        if hash_id in HISTORIAL_ENVIADOS:
+            print("Duplicado exacto bloqueado por Hash.", flush=True)
             return
 
-        # Si el tuit trae varias imágenes, guardamos también todas sus imágenes individuales en la memoria para evitar reenvíos cruzados
-        guardar_memoria(identificador_unico)
-        for img in lista_imagenes:
-            guardar_memoria(img)
+        # Registramos el hash en memoria y en disco de forma permanente
+        guardar_memoria(hash_id)
 
-        mensaje = f"🦁⚾ <b>{texto_limpio}</b>"
+        mensaje = f"🦁⚾ <b>{limpio}</b>"
+        tipo_m = "video" if video_url else "photo"
+        multimedia = [video_url] if video_url else imagenes
 
-        if video_url:
-            tipo_m = "video"
-            multimedia_a_enviar = [video_url]
-        elif len(lista_imagenes) > 0:
-            tipo_m = "photo"
-            multimedia_a_enviar = lista_imagenes
+        res = enviar_a_telegram(mensaje, multimedia, tipo_m)
+        if res.get("ok"):
+            print("¡Enviado con éxito y registrado en memoria!", flush=True)
         else:
-            tipo_m = "photo"
-            multimedia_a_enviar = []
-
-        resultado = enviar_a_telegram_multimedia(mensaje, multimedia_a_enviar, tipo_m)
-        if resultado.get("ok"):
-            print("¡Publicación enviada y registrada con éxito!", flush=True)
-        else:
-            print("Telegram rechazó el envío multimedia (intentando texto plano): " + str(resultado), flush=True)
-            enviar_a_telegram_multimedia(mensaje, [], "photo")
+            print("Reintento en texto plano debido a error multimedia: " + str(res), flush=True)
+            enviar_a_telegram(mensaje, [], "photo")
 
     except Exception as e:
-        print("Excepción general en la verificación: " + str(e), flush=True)
+        print("Error general: " + str(e), flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con bloqueo estricto de imágenes duplicadas...", flush=True)
-
+    print("Bot definitivo iniciado correctamente...", flush=True)
     while True:
         try:
             verificar_actualizacion()
         except Exception as err:
-            print("Error atrapado en el bucle principal: " + str(err), flush=True)
+            print("Error en bucle: " + str(err), flush=True)
         time.sleep(15)
