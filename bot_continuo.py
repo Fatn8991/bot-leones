@@ -79,7 +79,7 @@ def enviar_a_telegram_multimedia(mensaje, lista_multimedia, tipo_multimedia="pho
 
 def verificar_actualizacion():
     ultimo_enlace_memoria = cargar_memoria()
-    print("Buscando actualizaciones para @" + X_USERNAME + "...", flush=True)
+    print("Buscando nuevas publicaciones en @" + X_USERNAME + "...", flush=True)
     
     url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}"
     
@@ -105,7 +105,6 @@ def verificar_actualizacion():
         lineas = [l.strip() for l in contenido_markdown.split("\n") if l.strip()]
         
         tweet_candidato = None
-        enlace_candidato = None
         lista_imagenes = []
         video_url = None
         
@@ -113,25 +112,9 @@ def verificar_actualizacion():
             if "Única cuenta oficial" in linea or "títulos de la LVBP" in linea:
                 continue
 
+            # Buscamos de forma flexible cualquier línea que contenga los hashtags requeridos
             if any(tag in linea.lower() for tag in ["#leo", "#caraquistasoy"]):
                 
-                # Búsqueda rigurosa del ID numérico oficial de X
-                for j in range(max(0, i-5), min(len(lineas), i+6)):
-                    match_link = re.search(r'https?://(?:x|twitter)\.com/[^/]+/status/(\d+)', lineas[j])
-                    if match_link:
-                        enlace_candidato = match_link.group(1)
-                        break
-                
-                if not enlace_candidato:
-                    for j in range(max(0, i-5), min(len(lineas), i+6)):
-                        match_id = re.search(r'/status/(\d+)', lineas[j])
-                        if match_id:
-                            enlace_candidato = match_id.group(1)
-                            break
-
-                if not enlace_candidato:
-                    continue
-
                 bloque_texto = []
                 for k in range(max(0, i-3), i+1):
                     candidata = lineas[k]
@@ -152,12 +135,14 @@ def verificar_actualizacion():
                 else:
                     tweet_candidato = linea
 
+                # Búsqueda de video (.mp4)
                 for j in range(max(0, i-3), min(len(lineas), i+4)):
                     match_vid = re.search(r'(https?://\S+\.mp4\S*)', lineas[j])
                     if match_vid:
                         video_url = match_vid.group(1)
                         break
                 
+                # Búsqueda de imágenes
                 if not video_url:
                     for j in range(max(0, i-3), min(len(lineas), i+4)):
                         match_img = re.search(r'!\[Image[^\]]*\]\((https?://pbs\.twimg\.com/media/[^)]+)\)', lineas[j])
@@ -167,16 +152,21 @@ def verificar_actualizacion():
                                 lista_imagenes.append(img_link)
                 break
 
-        if not tweet_candidato or not enlace_candidato:
-            print("No se encontraron publicaciones con ID válido en este ciclo.", flush=True)
+        if not tweet_candidato:
+            print("Monitoreando... No hay tuits nuevos con #LEO o #CaraquistaSoy en este momento.", flush=True)
             return
 
-        print("ID oficial evaluado: " + str(enlace_candidato) + " | Memoria previa en disco: " + str(ultimo_enlace_memoria), flush=True)
+        # Generador de ID único basado en el contenido del tuit
+        texto_base = re.sub(r'\s+', '', tweet_candidato[:50])
+        enlace_candidato = str(abs(hash(texto_base)))
+
+        print("¡Tuit detectado! ID único: " + enlace_candidato + " | Memoria previa: " + str(ultimo_enlace_memoria), flush=True)
 
         if enlace_candidato == ultimo_enlace_memoria:
-            print("Esta publicación ya fue enviada anteriormente (duplicado bloqueado por ID).", flush=True)
+            print("El tuit detectado ya fue publicado anteriormente (duplicado bloqueado).", flush=True)
             return
 
+        # --- LIMPIEZA DE TEXTO ---
         texto_limpio = tweet_candidato
         texto_limpio = re.sub(r'\[\s*\]', '', texto_limpio)
         texto_limpio = re.sub(r'\(\s*\)', '', texto_limpio)
@@ -220,7 +210,7 @@ def verificar_actualizacion():
 
         resultado = enviar_a_telegram_multimedia(mensaje, multimedia_a_enviar, tipo_m)
         if resultado.get("ok"):
-            print("¡Publicación con ID único enviada con éxito!", flush=True)
+            print("¡Publicación enviada exitosamente al canal de Telegram!", flush=True)
         else:
             print("Telegram rechazó el envío multimedia (intentando texto plano): " + str(resultado), flush=True)
             enviar_a_telegram_multimedia(mensaje, [], "photo")
@@ -229,7 +219,7 @@ def verificar_actualizacion():
         print("Excepción general en la verificación: " + str(e), flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot con sintaxis corregida...", flush=True)
+    print("Iniciando bot con monitoreo activo...", flush=True)
 
     while True:
         try:
