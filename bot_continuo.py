@@ -144,7 +144,7 @@ def verificar_actualizacion():
                         continue
                     if re.match(r'^\[\s*\d+[mh]\s*\]', candidata):
                         continue
-                    if re.match(r'^[\d\s\.,kKmMBb/:-]+\$', candidata) and len(candidata) < 15:
+                    if re.match(r'^[\d\s\.,kKmMBb/:-]+$', candidata) and len(candidata) < 15:
                         continue
                         
                     if len(candidata.strip()) > 2:
@@ -199,4 +199,48 @@ def verificar_actualizacion():
         lineas_limpias = []
         for l in texto_limpio.split("\n"):
             l_str = l.strip()
-            if re.match
+            if re.match(r'^[\d\s\.,kKmMBb]+$', l_str) and len(l_str) < 15:
+                continue
+            if l_str:
+                lineas_limpias.append(l_str)
+                
+        texto_limpio = "\n".join(lineas_limpias)
+        texto_limpio = texto_limpio.replace('*', '').replace('[', '').replace(']', '').replace('  ', ' ').strip()
+
+        if len(texto_limpio) < 3:
+            texto_limpio = "¡Información oficial de los Leones del Caracas!"
+
+        mensaje = f"🦁⚾ <b>{texto_limpio}</b>"
+
+        if video_url:
+            tipo_m = "video"
+            multimedia_a_enviar = [video_url]
+        elif len(lista_imagenes) > 0:
+            tipo_m = "photo"
+            multimedia_a_enviar = lista_imagenes
+        else:
+            tipo_m = "photo"
+            multimedia_a_enviar = []
+
+        # Guardamos el ID oficial en disco antes de enviar
+        guardar_memoria(enlace_candidato)
+
+        resultado = enviar_a_telegram_multimedia(mensaje, multimedia_a_enviar, tipo_m)
+        if resultado.get("ok"):
+            print("¡Publicación con ID único enviada con éxito!", flush=True)
+        else:
+            print("Telegram rechazó el envío multimedia (intentando texto plano): " + str(resultado), flush=True)
+            enviar_a_telegram_multimedia(mensaje, [], "photo")
+
+    except Exception as e:
+        print("Excepción general en la verificación: " + str(e), flush=True)
+
+if __name__ == "__main__":
+    print("Iniciando bot con control estricto de ID de tuit...", flush=True)
+
+    while True:
+        try:
+            verificar_actualizacion()
+        except Exception as err:
+            print("Error atrapado en el bucle principal: " + str(err), flush=True)
+        time.sleep(15)
