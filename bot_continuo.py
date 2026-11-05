@@ -47,12 +47,6 @@ def enviar_a_telegram(mensaje, multimedia, tipo_m):
             res = requests.post(url, json={"chat_id": CHAT_ID, "media": media_group}, timeout=30)
             return res.json()
 
-        elif tipo_m == "video" and len(multimedia) > 0:
-            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendVideo"
-            payload = {"chat_id": CHAT_ID, "video": multimedia[0], "caption": mensaje, "parse_mode": "HTML"}
-            res = requests.post(url, json=payload, timeout=30)
-            return res.json()
-
         elif tipo_m == "photo" and len(multimedia) == 1:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
             payload = {"chat_id": CHAT_ID, "photo": multimedia[0], "caption": mensaje, "parse_mode": "HTML"}
@@ -116,27 +110,14 @@ def verificar_actualizacion():
                 
                 tweet_texto = "\n".join(bloque) if bloque else linea
 
-                # Búsqueda ampliada de videos (.mp4 o servidores de video de Twitter)
-                video_url = None
+                # Extracción robusta de imágenes de Twitter (pbs.twimg.com)
                 imagenes = []
-                
                 for j in range(max(0, i-4), min(len(lineas), i+5)):
-                    # Buscamos enlaces mp4 o fuentes de video de twimg
-                    match_v = re.search(r'(https?://\S+\.(?:mp4|m3u8)\S*|https?://video\.twimg\.com/\S+)', lineas[j])
-                    if match_v:
-                        potential_vid = match_v.group(1).split('?')[0]
-                        if not potential_vid.endswith(('.jpg', '.png', '.jpeg')):
-                            video_url = potential_vid
-                            break
-                
-                # Si no hay video directo, buscamos todas las imágenes de la publicación
-                if not video_url:
-                    for j in range(max(0, i-4), min(len(lineas), i+5)):
-                        match_img = re.search(r'(https?://pbs\.twimg\.com/media/[^)]+)', lineas[j])
-                        if match_img:
-                            img_url = match_img.group(1).split('?')[0]
-                            if img_url not in imagenes:
-                                imagenes.append(img_url)
+                    match_img = re.search(r'(https?://pbs\.twimg\.com/media/[^?\s)]+)', lineas[j])
+                    if match_img:
+                        img_url = match_img.group(1)
+                        if img_url not in imagenes:
+                            imagenes.append(img_url)
 
                 # --- LIMPIEZA PROFUNDA ---
                 limpio = tweet_texto
@@ -172,23 +153,20 @@ def verificar_actualizacion():
 
                 mensaje = f"🦁⚾ <b>{limpio}</b>"
                 
-                # Definimos el tipo de multimedia de forma inteligente
-                if video_url:
-                    tipo_m = "video"
-                    multimedia = [video_url]
-                elif len(imagenes) > 0:
+                # Garantizamos el envío fotográfico si existen imágenes capturadas
+                if len(imagenes) > 0:
                     tipo_m = "photo"
                     multimedia = imagenes
                 else:
-                    tipo_m = "photo"
+                    tipo_m = "text"
                     multimedia = []
 
                 res = enviar_a_telegram(mensaje, multimedia, tipo_m)
                 if res.get("ok"):
                     print(f"¡Publicación enviada con éxito! (Multimedia: {tipo_m}) Hash: " + hash_id, flush=True)
                 else:
-                    print("Telegram rechazó el contenido multimedia, reintentando en texto plano: " + str(res), flush=True)
-                    enviar_a_telegram(mensaje, [], "photo")
+                    print("Reintento en texto plano: " + str(res), flush=True)
+                    enviar_a_telegram(mensaje, [], "text")
                 
                 time.sleep(2)
 
@@ -196,7 +174,7 @@ def verificar_actualizacion():
         print("Error general: " + str(e), flush=True)
 
 if __name__ == "__main__":
-    print("Bot con captura multimedia mejorada iniciado...", flush=True)
+    print("Bot definitivo optimizado para texto y fotos iniciado...", flush=True)
     while True:
         try:
             verificar_actualizacion()
