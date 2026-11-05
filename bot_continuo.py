@@ -33,33 +33,37 @@ def guardar_memoria(identificador):
     except Exception as e:
         print("Error al guardar en disco: " + str(e), flush=True)
 
-def enviar_a_telegram(mensaje, multimedia, tipo_m):
+def enviar_a_telegram_seguro(mensaje, imagenes):
     try:
-        if tipo_m == "photo" and len(multimedia) > 1:
-            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMediaGroup"
-            media_group = []
-            for idx, img in enumerate(multimedia[:10]):
-                item = {"type": "photo", "media": img}
-                if idx == 0:
-                    item["caption"] = mensaje
-                    item["parse_mode"] = "HTML"
-                media_group.append(item)
-            res = requests.post(url, json={"chat_id": CHAT_ID, "media": media_group}, timeout=30)
-            return res.json()
+        # Si tenemos imágenes, intentamos descargar la primera de forma local y enviarla como archivo binario
+        if len(imagenes) > 0:
+            img_url = imagenes[0]
+            headers_img = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            img_resp = requests.get(img_url, headers=headers_img, timeout=15)
+            
+            if img_resp.status_code == 200:
+                url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+                files = {'photo': ('image.jpg', img_resp.content, 'image/jpeg')}
+                data = {'chat_id': CHAT_ID, 'caption': mensaje, 'parse_mode': 'HTML'}
+                
+                res = requests.post(url_tg, data=data, files=files, timeout=30)
+                resultado_json = res.json()
+                if resultado_json.get("ok"):
+                    return resultado_json
 
-        elif tipo_m == "photo" and len(multimedia) == 1:
-            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-            payload = {"chat_id": CHAT_ID, "photo": multimedia[0], "caption": mensaje, "parse_mode": "HTML"}
-            res = requests.post(url, json=payload, timeout=30)
-            return res.json()
+        # Si no hay imágenes o falló la descarga binaria, enviamos como mensaje de texto plano limpio
+        url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": CHAT_ID, 
+            "text": mensaje, 
+            "parse_mode": "HTML", 
+            "disable_web_page_preview": True
+        }
+        res = requests.post(url_tg, json=payload, timeout=30)
+        return res.json()
 
-        else:
-            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-            payload = {"chat_id": CHAT_ID, "text": mensaje, "parse_mode": "HTML", "disable_web_page_preview": True}
-            res = requests.post(url, json=payload, timeout=30)
-            return res.json()
     except Exception as err:
-        print("Error en Telegram: " + str(err), flush=True)
+        print("Error crítico en envío a Telegram: " + str(err), flush=True)
         return {}
 
 def verificar_actualizacion():
@@ -110,7 +114,7 @@ def verificar_actualizacion():
                 
                 tweet_texto = "\n".join(bloque) if bloque else linea
 
-                # Extracción robusta de imágenes de Twitter (pbs.twimg.com)
+                # Búsqueda de imágenes
                 imagenes = []
                 for j in range(max(0, i-4), min(len(lineas), i+5)):
                     match_img = re.search(r'(https?://pbs\.twimg\.com/media/[^?\s)]+)', lineas[j])
@@ -152,21 +156,12 @@ def verificar_actualizacion():
                 guardar_memoria(hash_id)
 
                 mensaje = f"🦁⚾ <b>{limpio}</b>"
-                
-                # Garantizamos el envío fotográfico si existen imágenes capturadas
-                if len(imagenes) > 0:
-                    tipo_m = "photo"
-                    multimedia = imagenes
-                else:
-                    tipo_m = "text"
-                    multimedia = []
 
-                res = enviar_a_telegram(mensaje, multimedia, tipo_m)
+                res = enviar_a_telegram_seguro(mensaje, imagenes)
                 if res.get("ok"):
-                    print(f"¡Publicación enviada con éxito! (Multimedia: {tipo_m}) Hash: " + hash_id, flush=True)
+                    print("¡Publicación enviada con éxito (con descarga binaria segura)! Hash: " + hash_id, flush=True)
                 else:
-                    print("Reintento en texto plano: " + str(res), flush=True)
-                    enviar_a_telegram(mensaje, [], "text")
+                    print("Error reportado por Telegram: " + str(res), flush=True)
                 
                 time.sleep(2)
 
@@ -174,7 +169,7 @@ def verificar_actualizacion():
         print("Error general: " + str(e), flush=True)
 
 if __name__ == "__main__":
-    print("Bot definitivo optimizado para texto y fotos iniciado...", flush=True)
+    print("Bot con descarga binaria de imágenes iniciado...", flush=True)
     while True:
         try:
             verificar_actualizacion()
