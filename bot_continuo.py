@@ -28,7 +28,6 @@ def guardar_memoria(identificador):
     try:
         if identificador and identificador not in HISTORIAL_ENVIADOS:
             HISTORIAL_ENVIADOS.add(identificador)
-            # Mantenemos un archivo local robusto
             with open(ARCHIVO_MEMORIA, "a", encoding="utf-8") as f:
                 f.write(identificador + "\n")
     except Exception as e:
@@ -102,7 +101,6 @@ def verificar_actualizacion():
 
             if any(tag in linea.lower() for tag in ["#leo", "#caraquistasoy"]):
                 
-                # Extracción limpia del bloque de texto asociado al tuit
                 bloque = []
                 for k in range(max(0, i-2), i+1):
                     cand = lineas[k]
@@ -116,7 +114,6 @@ def verificar_actualizacion():
                 
                 tweet_texto = "\n".join(bloque) if bloque else linea
 
-                # Búsqueda de video o imágenes
                 for j in range(max(0, i-2), min(len(lineas), i+3)):
                     match_v = re.search(r'(https?://\S+\.mp4\S*)', lineas[j])
                     if match_v:
@@ -133,9 +130,10 @@ def verificar_actualizacion():
                 break
 
         if not tweet_texto:
+            print("Monitoreando... No hay tuits nuevos con los hashtags configurados.", flush=True)
             return
 
-        # --- LIMPIEZA PROFUNDA ---
+        # --- LIMPIEZA PROFUNDA Y NORMALIZACIÓN DE FIRMA ---
         limpio = tweet_texto
         limpio = re.sub(r'!?[Ii]mage\s*\d*:?', '', limpio)
         limpio = re.sub(r'\[\s*\]|\(\s*\)|\(blob:[^)]+\)|blob:\S+', '', limpio)
@@ -148,17 +146,16 @@ def verificar_actualizacion():
         if len(limpio) < 3:
             limpio = "¡Información oficial de los Leones del Caracas!"
 
-        # Generador de Hash MD5 único basado estrictamente en el texto alfanumérico limpio
+        # Firma basada en Hash MD5 estricto del texto limpio completo
         firma_texto = re.sub(r'[^a-zA-Z0-9]', '', limpio.lower())
         hash_id = hashlib.md5(firma_texto.encode('utf-8')).hexdigest()
 
         print("Hash evaluado: " + hash_id, flush=True)
 
         if hash_id in HISTORIAL_ENVIADOS:
-            print("Duplicado exacto bloqueado por Hash.", flush=True)
+            print("Duplicado bloqueado por Hash MD5.", flush=True)
             return
 
-        # Registramos el hash en memoria y en disco de forma permanente
         guardar_memoria(hash_id)
 
         mensaje = f"🦁⚾ <b>{limpio}</b>"
@@ -167,9 +164,9 @@ def verificar_actualizacion():
 
         res = enviar_a_telegram(mensaje, multimedia, tipo_m)
         if res.get("ok"):
-            print("¡Enviado con éxito y registrado en memoria!", flush=True)
+            print("¡Publicación enviada y registrada con éxito!", flush=True)
         else:
-            print("Reintento en texto plano debido a error multimedia: " + str(res), flush=True)
+            print("Telegram rechazó el envío multimedia (intentando texto plano): " + str(res), flush=True)
             enviar_a_telegram(mensaje, [], "photo")
 
     except Exception as e:
