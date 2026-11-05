@@ -91,14 +91,12 @@ def verificar_actualizacion():
 
         lineas = [l.strip() for l in contenido.split("\n") if l.strip()]
         
-        tweet_texto = None
-        imagenes = []
-        video_url = None
-        
+        # Recorremos todas las líneas buscando coincidencias de hashtags para no perder ninguna jugada
         for i, linea in enumerate(lineas):
             if "Única cuenta oficial" in linea or "títulos de la LVBP" in linea:
                 continue
 
+            # Verificamos si la línea contiene los hashtags clave (incluso si están juntos con símbolos)
             if any(tag in linea.lower() for tag in ["#leo", "#caraquistasoy"]):
                 
                 bloque = []
@@ -114,6 +112,8 @@ def verificar_actualizacion():
                 
                 tweet_texto = "\n".join(bloque) if bloque else linea
 
+                video_url = None
+                imagenes = []
                 for j in range(max(0, i-2), min(len(lineas), i+3)):
                     match_v = re.search(r'(https?://\S+\.mp4\S*)', lineas[j])
                     if match_v:
@@ -127,53 +127,49 @@ def verificar_actualizacion():
                             img_url = match_img.group(1).split('?')[0]
                             if img_url not in imagenes:
                                 imagenes.append(img_url)
-                break
 
-        if not tweet_texto:
-            print("Monitoreando... No hay tuits nuevos con los hashtags configurados.", flush=True)
-            return
+                # --- LIMPIEZA PROFUNDA ---
+                limpio = tweet_texto
+                limpio = re.sub(r'!?[Ii]mage\s*\d*:?', '', limpio)
+                limpio = re.sub(r'\[\s*\]|\(\s*\)|\(blob:[^)]+\)|blob:\S+', '', limpio)
+                limpio = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}|Caracas,\s+Venezuela', '', limpio, flags=re.IGNORECASE)
+                limpio = re.sub(r'@\w+|https?://\S+', '', limpio)
+                
+                lineas_L = [l.strip() for l in limpio.split("\n") if l.strip() and not (len(l.strip()) < 15 and re.match(r'^[\d\s\.,kKmMBb]+$', l.strip()))]
+                limpio = "\n".join(lineas_L).replace('*', '').replace('[', '').replace(']', '').replace('(', '').replace(')', '').replace('  ', ' ').strip()
 
-        # --- LIMPIEZA PROFUNDA Y NORMALIZACIÓN DE FIRMA ---
-        limpio = tweet_texto
-        limpio = re.sub(r'!?[Ii]mage\s*\d*:?', '', limpio)
-        limpio = re.sub(r'\[\s*\]|\(\s*\)|\(blob:[^)]+\)|blob:\S+', '', limpio)
-        limpio = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}|Caracas,\s+Venezuela', '', limpio, flags=re.IGNORECASE)
-        limpio = re.sub(r'@\w+|https?://\S+', '', limpio)
-        
-        lineas_L = [l.strip() for l in limpio.split("\n") if l.strip() and not (len(l.strip()) < 15 and re.match(r'^[\d\s\.,kKmMBb]+$', l.strip()))]
-        limpio = "\n".join(lineas_L).replace('*', '').replace('[', '').replace(']', '').replace('(', '').replace(')', '').replace('  ', ' ').strip()
+                if len(limpio) < 3:
+                    limpio = "¡Información oficial de los Leones del Caracas!"
 
-        if len(limpio) < 3:
-            limpio = "¡Información oficial de los Leones del Caracas!"
+                firma_texto = re.sub(r'[^a-zA-Z0-9]', '', limpio.lower())
+                hash_id = hashlib.md5(firma_texto.encode('utf-8')).hexdigest()
 
-        # Firma basada en Hash MD5 estricto del texto limpio completo
-        firma_texto = re.sub(r'[^a-zA-Z0-9]', '', limpio.lower())
-        hash_id = hashlib.md5(firma_texto.encode('utf-8')).hexdigest()
+                # Si este tuit específico ya fue enviado, continuamos buscando en las siguientes líneas
+                if hash_id in HISTORIAL_ENVIADOS:
+                    continue
 
-        print("Hash evaluado: " + hash_id, flush=True)
+                # Si es nuevo, lo guardamos y lo enviamos de inmediato
+                guardar_memoria(hash_id)
 
-        if hash_id in HISTORIAL_ENVIADOS:
-            print("Duplicado bloqueado por Hash MD5.", flush=True)
-            return
+                mensaje = f"🦁⚾ <b>{limpio}</b>"
+                tipo_m = "video" if video_url else "photo"
+                multimedia = [video_url] if video_url else imagenes
 
-        guardar_memoria(hash_id)
-
-        mensaje = f"🦁⚾ <b>{limpio}</b>"
-        tipo_m = "video" if video_url else "photo"
-        multimedia = [video_url] if video_url else imagenes
-
-        res = enviar_a_telegram(mensaje, multimedia, tipo_m)
-        if res.get("ok"):
-            print("¡Publicación enviada y registrada con éxito!", flush=True)
-        else:
-            print("Telegram rechazó el envío multimedia (intentando texto plano): " + str(res), flush=True)
-            enviar_a_telegram(mensaje, [], "photo")
+                res = enviar_a_telegram(mensaje, multimedia, tipo_m)
+                if res.get("ok"):
+                    print("¡Jugada nueva enviada y registrada con éxito! Hash: " + hash_id, flush=True)
+                else:
+                    print("Reintento en texto plano: " + str(res), flush=True)
+                    enviar_a_telegram(mensaje, [], "photo")
+                
+                # Pausa breve entre envíos si detecta múltiples tuits acumulados para no saturar Telegram
+                time.sleep(2)
 
     except Exception as e:
         print("Error general: " + str(e), flush=True)
 
 if __name__ == "__main__":
-    print("Bot definitivo iniciado correctamente...", flush=True)
+    print("Bot escáner múltiple iniciado correctamente...", flush=True)
     while True:
         try:
             verificar_actualizacion()
