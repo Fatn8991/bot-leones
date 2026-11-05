@@ -102,7 +102,6 @@ def verificar_actualizacion():
                     cand = lineas[k]
                     c_low = cand.lower()
                     
-                    # Filtramos basura, enlaces, metadatos y marcas de tiempo sueltas
                     if any(x in c_low for x in ["leones_cbbc", "http://", "https://", "image", "born ", "caracas, venezuela", "joined "]):
                         continue
                     if re.match(r'^\d+[mhds]$', cand.strip()):
@@ -117,25 +116,30 @@ def verificar_actualizacion():
                 
                 tweet_texto = "\n".join(bloque) if bloque else linea
 
+                # Búsqueda ampliada de videos (.mp4 o servidores de video de Twitter)
                 video_url = None
                 imagenes = []
-                for j in range(max(0, i-2), min(len(lineas), i+3)):
-                    match_v = re.search(r'(https?://\S+\.mp4\S*)', lineas[j])
-                    if match_v:
-                        video_url = match_v.group(1)
-                        break
                 
+                for j in range(max(0, i-4), min(len(lineas), i+5)):
+                    # Buscamos enlaces mp4 o fuentes de video de twimg
+                    match_v = re.search(r'(https?://\S+\.(?:mp4|m3u8)\S*|https?://video\.twimg\.com/\S+)', lineas[j])
+                    if match_v:
+                        potential_vid = match_v.group(1).split('?')[0]
+                        if not potential_vid.endswith(('.jpg', '.png', '.jpeg')):
+                            video_url = potential_vid
+                            break
+                
+                # Si no hay video directo, buscamos todas las imágenes de la publicación
                 if not video_url:
-                    for j in range(max(0, i-2), min(len(lineas), i+3)):
+                    for j in range(max(0, i-4), min(len(lineas), i+5)):
                         match_img = re.search(r'(https?://pbs\.twimg\.com/media/[^)]+)', lineas[j])
                         if match_img:
                             img_url = match_img.group(1).split('?')[0]
                             if img_url not in imagenes:
                                 imagenes.append(img_url)
 
-                # --- LIMPIEZA PROFUNDA Y ELIMINACIÓN DE MINUTOS/HORAS ---
+                # --- LIMPIEZA PROFUNDA ---
                 limpio = tweet_texto
-                # Elimina patrones de tiempo como "4m", "16m", "2h" al comienzo o aislados
                 limpio = re.sub(r'\b\d+[mhds]\b', '', limpio)
                 limpio = re.sub(r'!?[Ii]mage\s*\d*:?', '', limpio)
                 limpio = re.sub(r'\[\s*\]|\(\s*\)|\(blob:[^)]+\)|blob:\S+', '', limpio)
@@ -167,14 +171,23 @@ def verificar_actualizacion():
                 guardar_memoria(hash_id)
 
                 mensaje = f"🦁⚾ <b>{limpio}</b>"
-                tipo_m = "video" if video_url else "photo"
-                multimedia = [video_url] if video_url else imagenes
+                
+                # Definimos el tipo de multimedia de forma inteligente
+                if video_url:
+                    tipo_m = "video"
+                    multimedia = [video_url]
+                elif len(imagenes) > 0:
+                    tipo_m = "photo"
+                    multimedia = imagenes
+                else:
+                    tipo_m = "photo"
+                    multimedia = []
 
                 res = enviar_a_telegram(mensaje, multimedia, tipo_m)
                 if res.get("ok"):
-                    print("¡Jugada limpia enviada con éxito! Hash: " + hash_id, flush=True)
+                    print(f"¡Publicación enviada con éxito! (Multimedia: {tipo_m}) Hash: " + hash_id, flush=True)
                 else:
-                    print("Reintento en texto plano: " + str(res), flush=True)
+                    print("Telegram rechazó el contenido multimedia, reintentando en texto plano: " + str(res), flush=True)
                     enviar_a_telegram(mensaje, [], "photo")
                 
                 time.sleep(2)
@@ -183,7 +196,7 @@ def verificar_actualizacion():
         print("Error general: " + str(e), flush=True)
 
 if __name__ == "__main__":
-    print("Bot con limpieza de tiempos iniciado correctamente...", flush=True)
+    print("Bot con captura multimedia mejorada iniciado...", flush=True)
     while True:
         try:
             verificar_actualizacion()
