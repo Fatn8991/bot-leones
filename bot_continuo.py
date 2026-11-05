@@ -36,11 +36,14 @@ def guardar_memoria(identificador):
 
 def enviar_a_telegram(mensaje, imagenes):
     try:
+        # Filtrar solo URLs válidas de imágenes de Twitter
+        imagenes_validas = [img for img in imagenes if "pbs.twimg.com/media" in img]
+
         # Enviar grupo de medios (álbum) si hay más de una foto
-        if len(imagenes) > 1:
+        if len(imagenes_validas) > 1:
             url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMediaGroup"
             media_group = []
-            for idx, img_url in enumerate(imagenes[:10]):
+            for idx, img_url in enumerate(imagenes_validas[:10]):
                 item = {"type": "photo", "media": img_url}
                 if idx == 0:
                     item["caption"] = mensaje
@@ -50,10 +53,10 @@ def enviar_a_telegram(mensaje, imagenes):
             if res.json().get("ok"):
                 return res.json()
 
-        # Enviar foto individual con descarga local segura
-        if len(imagenes) == 1:
+        # Enviar foto individual con descarga local segura si hay 1 imagen
+        if len(imagenes_validas) == 1:
             headers = {'User-Agent': 'Mozilla/5.0'}
-            img_resp = requests.get(imagenes[0], headers=headers, timeout=15)
+            img_resp = requests.get(imagenes_validas[0], headers=headers, timeout=15)
             if img_resp.status_code == 200:
                 url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
                 files = {'photo': ('image.jpg', img_resp.content, 'image/jpeg')}
@@ -62,7 +65,7 @@ def enviar_a_telegram(mensaje, imagenes):
                 if res.json().get("ok"):
                     return res.json()
 
-        # Respaldo en texto plano si no hay imágenes
+        # Respaldo en texto plano si no hay imágenes o falló la multimedia
         url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {
             "chat_id": CHAT_ID, 
@@ -78,7 +81,6 @@ def enviar_a_telegram(mensaje, imagenes):
         return {}
 
 def verificar_actualizacion():
-    # Instancias públicas de RSS para leer X sin requerir tokens ni cuotas
     instancias_rss = [
         f"https://nitter.net/{X_USERNAME}/rss",
         f"https://rss.app/feeds/twitter/{X_USERNAME}.xml",
@@ -98,31 +100,8 @@ def verificar_actualizacion():
             continue
 
     if not contenido_xml:
-        # Petición directa limpia de contingencia
-        try:
-            res = requests.get(f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}", headers=headers, timeout=15)
-            if res.status_code == 200:
-                data = res.json()
-                texto_raw = data.get("data", {}).get("content", "")
-                
-                for linea in texto_raw.split("\n"):
-                    if any(tag in linea.lower() for tag in ["#leo", "#caraquistasoy", "leones"]):
-                        # Extracción rápida de imágenes
-                        imgs = re.findall(r'https?://pbs\.twimg\.com/media/[^\s"\'\)]+', texto_raw)
-                        
-                        limpio = re.sub(r'https?://\S+', '', linea).strip()
-                        firma = hashlib.md5(limpio.lower().encode('utf-8')).hexdigest()
-                        
-                        if firma not in HISTORIAL_ENVIADOS:
-                            guardar_memoria(firma)
-                            msg = f"🦁⚾ <b>{limpio}</b>"
-                            enviar_a_telegram(msg, list(set(imgs)))
-                            return
-        except Exception as e:
-            print("Error en respaldo: " + str(e), flush=True)
         return
 
-    # Procesamiento del Feed RSS en formato estándar
     try:
         root = ET.fromstring(contenido_xml)
         items = root.findall(".//item")
@@ -132,10 +111,27 @@ def verificar_actualizacion():
             description = item.find("description").text if item.find("description") is not None else ""
             guid = item.find("guid").text if item.find("guid") is not None else title
 
-            # Extracción de imágenes en la descripción del ítem
-            imagenes = list(set(re.findall(r'https?://pbs\.twimg\.com/media/[^\s"\'\)<>]+', description)))
+            # Extracción exhaustiva de imágenes desde etiquetas HTML, atributos src y URLs directas en el texto
+            imagenes = []
+            
+            # Buscar en tags <img> dentro de la descripción HTML
+            match_imgs = re.findall(r'<img[^>]+src="([^">]+)"', description)
+            for img in match_imgs:
+                if "twimg.com" in img:
+                    # Limpiar sufijos de tamaño de Nitter si los trae (ej: :thumb, :small) para dejar la original
+                    img_limpia = re.sub(r':[a-z]+$', '', img)
+                    imagenes.append(img_limpia)
 
-            # Limpieza del texto del post
+            # Buscar cualquier enlace plano de pbs.twimg.com en todo el texto del feed
+            match_links = re.findall(r'https?://pbs\.twimg\.com/media/[^\s"\'\)<>]+', description + " " + title)
+            for link in match_links:
+                link_limpio = re.sub(r':[a-z]+$', '', link)
+                imagenes.append(link_limpio)
+
+            # Eliminar duplicados manteniendo orden
+            imagenes = list(dict.fromkeys(imagenes))
+
+            # Limpieza del texto del tuit
             texto_limpio = re.sub(r'<[^>]+>', '', title)
             texto_limpio = re.sub(r'https?://\S+', '', texto_limpio).strip()
 
@@ -152,7 +148,7 @@ def verificar_actualizacion():
 
             res = enviar_a_telegram(mensaje, imagenes)
             if res.get("ok"):
-                print(f"¡Publicación enviada con éxito! Hash: {firma_id}", flush=True)
+                print(f"¡Publicación con multimedia enviada! Hash: {firma_id}", flush=True)
             else:
                 print(f"Respuesta de Telegram: {res}", flush=True)
 
@@ -162,7 +158,7 @@ def verificar_actualizacion():
         print("Error parseando XML: " + str(err_xml), flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot continuo autónomo e inagotable...", flush=True)
+    print("Iniciando bot continuo autónomo con soporte multimedia optimizado...", flush=True)
     while True:
         try:
             verificar_actualizacion()
