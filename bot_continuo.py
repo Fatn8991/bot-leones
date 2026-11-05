@@ -1,10 +1,11 @@
 import requests
 import os
 import time
-import re
 import hashlib
+import re
 
 X_USERNAME = "leones_cbbc"
+TWITTER_BEARER_TOKEN = os.environ.get("TWITTER_BEARER_TOKEN")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
@@ -33,9 +34,22 @@ def guardar_memoria(identificador):
     except Exception as e:
         print("Error al guardar en disco: " + str(e), flush=True)
 
-def enviar_a_telegram_multimedia_seguro(mensaje, imagenes):
+def obtener_user_id():
+    url = f"https://api.twitter.com/2/users/by/username/{X_USERNAME}"
+    headers = {"Authorization": f"Bearer {TWITTER_BEARER_TOKEN}"}
     try:
-        # Si hay múltiples imágenes, las enviamos como un álbum (Media Group) usando URLs directas de Twitter
+        res = requests.get(url, headers=headers, timeout=15)
+        if res.status_code == 200:
+            return res.json().get("data", {}).get("id")
+        else:
+            print(f"Error al obtener User ID: {res.status_code} - {res.text}", flush=True)
+    except Exception as e:
+        print("Error de conexión obteniendo User ID de X: " + str(e), flush=True)
+    return None
+
+def enviar_a_telegram(mensaje, imagenes):
+    try:
+        # Si hay varias imágenes, envía un álbum de fotos
         if len(imagenes) > 1:
             url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMediaGroup"
             media_group = []
@@ -45,32 +59,22 @@ def enviar_a_telegram_multimedia_seguro(mensaje, imagenes):
                     item["caption"] = mensaje
                     item["parse_mode"] = "HTML"
                 media_group.append(item)
-            
-            payload = {"chat_id": CHAT_ID, "media": media_group}
-            res = requests.post(url_tg, json=payload, timeout=30)
-            res_json = res.json()
-            if res_json.get("ok"):
-                return res_json
-            else:
-                print("Fallo sendMediaGroup, intentando con la primera foto local...", flush=True)
+            res = requests.post(url_tg, json={"chat_id": CHAT_ID, "media": media_group}, timeout=30)
+            if res.json().get("ok"):
+                return res.json()
 
-        # Si hay una sola imagen, intentamos descarga binaria local segura
+        # Si hay una sola imagen, se descarga localmente y se envía de forma segura
         if len(imagenes) == 1:
-            img_url = imagenes[0]
-            headers_img = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            img_resp = requests.get(img_url, headers=headers_img, timeout=15)
-            
+            img_resp = requests.get(imagenes[0], timeout=15)
             if img_resp.status_code == 200:
                 url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
                 files = {'photo': ('image.jpg', img_resp.content, 'image/jpeg')}
                 data = {'chat_id': CHAT_ID, 'caption': mensaje, 'parse_mode': 'HTML'}
-                
                 res = requests.post(url_tg, data=data, files=files, timeout=30)
-                res_json = res.json()
-                if res_json.get("ok"):
-                    return res_json
+                if res.json().get("ok"):
+                    return res.json()
 
-        # Respaldo final: Mensaje de texto plano si no hay imágenes o falló la multimedia
+        # Si no hay imágenes, envía solo texto plano limpio
         url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {
             "chat_id": CHAT_ID, 
@@ -80,118 +84,79 @@ def enviar_a_telegram_multimedia_seguro(mensaje, imagenes):
         }
         res = requests.post(url_tg, json=payload, timeout=30)
         return res.json()
-
     except Exception as err:
-        print("Error crítico en envío multimedia a Telegram: " + str(err), flush=True)
+        print("Error en Telegram: " + str(err), flush=True)
         return {}
 
-def verificar_actualizacion():
-    url_api = f"https://r.jina.ai/https://x.com/{X_USERNAME}?t={int(time.time())}"
+def verificar_actualizacion(user_id):
+    url = f"https://api.twitter.com/2/users/{user_id}/tweets"
+    params = {
+        "max_results": 5,
+        "expansions": "attachments.media_keys",
+        "media.fields": "url,preview_image_url,type",
+        "tweet.fields": "created_at,text"
+    }
+    headers = {"Authorization": f"Bearer {TWITTER_BEARER_TOKEN}"}
     
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Accept': 'application/json',
-            'Cache-Control': 'no-cache'
-        }
-        response = requests.get(url_api, headers=headers, timeout=20)
-        
-        if response.status_code != 200:
-            print("Error HTTP Jina: " + str(response.status_code), flush=True)
+        res = requests.get(url, headers=headers, params=params, timeout=20)
+        if res.status_code != 200:
+            print(f"Error API X: {res.status_code} - {res.text}", flush=True)
             return
 
-        data = response.json()
-        contenido = data.get("data", {}).get("content", "")
+        data = res.json()
+        tweets = data.get("data", [])
+        includes = data.get("includes", {}).get("media", [])
         
-        if not contenido:
-            return
+        media_map = {m["media_key"]: m.get("url") or m.get("preview_image_url") for m in includes if m.get("url") or m.get("preview_image_url")}
 
-        lineas = [l.strip() for l in contenido.split("\n") if l.strip()]
-        
-        for i, linea in enumerate(lineas):
-            if "Única cuenta oficial" in linea or "títulos de la LVBP" in linea:
+        # Procesamos en orden cronológico (del más antiguo al más nuevo)
+        for tweet in reversed(tweets):
+            tweet_id = tweet.get("id")
+            texto = tweet.get("text", "")
+            
+            # Verificamos si ya fue enviado usando el ID oficial del tuit
+            if tweet_id in HISTORIAL_ENVIADOS:
                 continue
 
-            if any(tag in linea.lower() for tag in ["#leo", "#caraquistasoy"]):
-                
-                bloque = []
-                for k in range(max(0, i-2), i+1):
-                    cand = lineas[k]
-                    c_low = cand.lower()
-                    
-                    if any(x in c_low for x in ["leones_cbbc", "http://", "https://", "image", "born ", "caracas, venezuela", "joined "]):
-                        continue
-                    if re.match(r'^\d+[mhds]$', cand.strip()):
-                        continue
-                    if re.match(r'^\[\s*\d+[mh]\s*\]', cand):
-                        continue
-                    if len(cand.strip()) < 15 and re.match(r'^[\d\s\.,kKmMBb/:-]+$', cand):
-                        continue
-                        
-                    if len(cand.strip()) > 2:
-                        bloque.append(cand)
-                
-                tweet_texto = "\n".join(bloque) if bloque else linea
+            # Extracción de imágenes asociadas
+            imagenes = []
+            attachments = tweet.get("attachments", {}).get("media_keys", [])
+            for key in attachments:
+                if key in media_map:
+                    imagenes.append(media_map[key])
 
-                # Capturamos TODAS las imágenes asociadas al tuit (incluso galerías múltiples)
-                imagenes = []
-                for j in range(max(0, i-4), min(len(lineas), i+5)):
-                    match_img = re.search(r'(https?://pbs\.twimg\.com/media/[^?\s)]+)', lineas[j])
-                    if match_img:
-                        img_url = match_img.group(1)
-                        if img_url not in imagenes:
-                            imagenes.append(img_url)
+            # Limpiamos los enlaces web del texto para que quede estético
+            texto_limpio = re.sub(r'https?://\S+', '', texto).strip()
+            if not texto_limpio:
+                texto_limpio = "¡Información oficial de los Leones del Caracas!"
 
-                # --- LIMPIEZA PROFUNDA ---
-                limpio = tweet_texto
-                limpio = re.sub(r'\b\d+[mhds]\b', '', limpio)
-                limpio = re.sub(r'!?[Ii]mage\s*\d*:?', '', limpio)
-                limpio = re.sub(r'\[\s*\]|\(\s*\)|\(blob:[^)]+\)|blob:\S+', '', limpio)
-                limpio = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}|Caracas,\s+Venezuela', '', limpio, flags=re.IGNORECASE)
-                limpio = re.sub(r'@\w+|https?://\S+', '', limpio)
-                
-                lineas_L = []
-                for l in limpio.split("\n"):
-                    l_str = l.strip()
-                    if not l_str:
-                        continue
-                    if re.match(r'^\d+[mhds]$', l_str):
-                        continue
-                    if len(l_str) < 15 and re.match(r'^[\d\s\.,kKmMBb]+$', l_str):
-                        continue
-                    lineas_L.append(l_str)
-                
-                limpio = "\n".join(lineas_L).replace('*', '').replace('[', '').replace(']', '').replace('(', '').replace(')', '').replace('  ', ' ').strip()
+            mensaje = f"🦁⚾ <b>{texto_limpio}</b>"
 
-                if len(limpio) < 3:
-                    limpio = "¡Información oficial de los Leones del Caracas!"
+            # Registramos el ID oficial inmediatamente en disco y memoria
+            guardar_memoria(tweet_id)
 
-                firma_texto = re.sub(r'[^a-zA-Z0-9]', '', limpio.lower())
-                hash_id = hashlib.md5(firma_texto.encode('utf-8')).hexdigest()
-
-                if hash_id in HISTORIAL_ENVIADOS:
-                    continue
-
-                guardar_memoria(hash_id)
-
-                mensaje = f"🦁⚾ <b>{limpio}</b>"
-
-                res = enviar_a_telegram_multimedia_seguro(mensaje, imagenes)
-                if res.get("ok"):
-                    print(f"¡Publicación multimedia enviada con éxito! (Total fotos: {len(imagenes)}) Hash: " + hash_id, flush=True)
-                else:
-                    print("Error reportado por Telegram: " + str(res), flush=True)
-                
-                time.sleep(2)
+            res_tg = enviar_a_telegram(mensaje, imagenes)
+            if res_tg.get("ok"):
+                print(f"¡Tuit oficial {tweet_id} enviado con éxito!", flush=True)
+            else:
+                print(f"Error al enviar tuit {tweet_id} a Telegram: {res_tg}", flush=True)
+            
+            time.sleep(2)
 
     except Exception as e:
-        print("Error general: " + str(e), flush=True)
+        print("Error general en bucle de API X: " + str(e), flush=True)
 
 if __name__ == "__main__":
-    print("Bot con soporte de galerías múltiples iniciado...", flush=True)
+    print("Iniciando bot con API Oficial de X...", flush=True)
+    user_id = None
+    while not user_id:
+        user_id = obtener_user_id()
+        if not user_id:
+            print("Reintentando obtener User ID de X en 10 segundos...", flush=True)
+            time.sleep(10)
+    
+    print(f"¡User ID de @{X_USERNAME} obtenido ({user_id})! Iniciando monitoreo oficial...", flush=True)
     while True:
-        try:
-            verificar_actualizacion()
-        except Exception as err:
-            print("Error en bucle: " + str(err), flush=True)
-        time.sleep(15)
+        verificar_actualizacion(user_id)
+        time.sleep(30)
