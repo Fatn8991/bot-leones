@@ -91,22 +91,27 @@ def verificar_actualizacion():
 
         lineas = [l.strip() for l in contenido.split("\n") if l.strip()]
         
-        # Recorremos todas las líneas buscando coincidencias de hashtags para no perder ninguna jugada
         for i, linea in enumerate(lineas):
             if "Única cuenta oficial" in linea or "títulos de la LVBP" in linea:
                 continue
 
-            # Verificamos si la línea contiene los hashtags clave (incluso si están juntos con símbolos)
             if any(tag in linea.lower() for tag in ["#leo", "#caraquistasoy"]):
                 
                 bloque = []
                 for k in range(max(0, i-2), i+1):
                     cand = lineas[k]
                     c_low = cand.lower()
+                    
+                    # Filtramos basura, enlaces, metadatos y marcas de tiempo sueltas
                     if any(x in c_low for x in ["leones_cbbc", "http://", "https://", "image", "born ", "caracas, venezuela", "joined "]):
                         continue
-                    if re.match(r'^\[\s*\d+[mh]\s*\]', cand) or (len(cand) < 15 and re.match(r'^[\d\s\.,kKmMBb/:-]+$', cand)):
+                    if re.match(r'^\d+[mhds]$', cand.strip()):
                         continue
+                    if re.match(r'^\[\s*\d+[mh]\s*\]', cand):
+                        continue
+                    if len(cand.strip()) < 15 and re.match(r'^[\d\s\.,kKmMBb/:-]+$', cand):
+                        continue
+                        
                     if len(cand.strip()) > 2:
                         bloque.append(cand)
                 
@@ -128,14 +133,26 @@ def verificar_actualizacion():
                             if img_url not in imagenes:
                                 imagenes.append(img_url)
 
-                # --- LIMPIEZA PROFUNDA ---
+                # --- LIMPIEZA PROFUNDA Y ELIMINACIÓN DE MINUTOS/HORAS ---
                 limpio = tweet_texto
+                # Elimina patrones de tiempo como "4m", "16m", "2h" al comienzo o aislados
+                limpio = re.sub(r'\b\d+[mhds]\b', '', limpio)
                 limpio = re.sub(r'!?[Ii]mage\s*\d*:?', '', limpio)
                 limpio = re.sub(r'\[\s*\]|\(\s*\)|\(blob:[^)]+\)|blob:\S+', '', limpio)
                 limpio = re.sub(r'Born\s+[A-Za-z]+\s+\d+,\s+\d{4}|Caracas,\s+Venezuela', '', limpio, flags=re.IGNORECASE)
                 limpio = re.sub(r'@\w+|https?://\S+', '', limpio)
                 
-                lineas_L = [l.strip() for l in limpio.split("\n") if l.strip() and not (len(l.strip()) < 15 and re.match(r'^[\d\s\.,kKmMBb]+$', l.strip()))]
+                lineas_L = []
+                for l in limpio.split("\n"):
+                    l_str = l.strip()
+                    if not l_str:
+                        continue
+                    if re.match(r'^\d+[mhds]$', l_str):
+                        continue
+                    if len(l_str) < 15 and re.match(r'^[\d\s\.,kKmMBb]+$', l_str):
+                        continue
+                    lineas_L.append(l_str)
+                
                 limpio = "\n".join(lineas_L).replace('*', '').replace('[', '').replace(']', '').replace('(', '').replace(')', '').replace('  ', ' ').strip()
 
                 if len(limpio) < 3:
@@ -144,11 +161,9 @@ def verificar_actualizacion():
                 firma_texto = re.sub(r'[^a-zA-Z0-9]', '', limpio.lower())
                 hash_id = hashlib.md5(firma_texto.encode('utf-8')).hexdigest()
 
-                # Si este tuit específico ya fue enviado, continuamos buscando en las siguientes líneas
                 if hash_id in HISTORIAL_ENVIADOS:
                     continue
 
-                # Si es nuevo, lo guardamos y lo enviamos de inmediato
                 guardar_memoria(hash_id)
 
                 mensaje = f"🦁⚾ <b>{limpio}</b>"
@@ -157,19 +172,18 @@ def verificar_actualizacion():
 
                 res = enviar_a_telegram(mensaje, multimedia, tipo_m)
                 if res.get("ok"):
-                    print("¡Jugada nueva enviada y registrada con éxito! Hash: " + hash_id, flush=True)
+                    print("¡Jugada limpia enviada con éxito! Hash: " + hash_id, flush=True)
                 else:
                     print("Reintento en texto plano: " + str(res), flush=True)
                     enviar_a_telegram(mensaje, [], "photo")
                 
-                # Pausa breve entre envíos si detecta múltiples tuits acumulados para no saturar Telegram
                 time.sleep(2)
 
     except Exception as e:
         print("Error general: " + str(e), flush=True)
 
 if __name__ == "__main__":
-    print("Bot escáner múltiple iniciado correctamente...", flush=True)
+    print("Bot con limpieza de tiempos iniciado correctamente...", flush=True)
     while True:
         try:
             verificar_actualizacion()
