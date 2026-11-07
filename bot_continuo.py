@@ -186,4 +186,4 @@ if __name__ == "__main__":
             verificar_actualizacion()
         except Exception as err:
             print("Error en el bucle principal: " + str(err), flush=True)
-        time.sleep(30)
+        time.sleep(10)
