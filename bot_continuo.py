@@ -34,8 +34,21 @@ def guardar_memoria(identificador):
     except Exception as e:
         print("Error al guardar memoria en disco: " + str(e), flush=True)
 
-def enviar_a_telegram(mensaje, imagenes):
+def enviar_a_telegram(mensaje, imagenes, videos):
     try:
+        # Si hay videos, priorizamos enviar el video con su texto/caption
+        if videos:
+            url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendVideo"
+            payload = {
+                "chat_id": CHAT_ID,
+                "video": videos[0],
+                "caption": mensaje,
+                "parse_mode": "HTML"
+            }
+            res = requests.post(url_tg, json=payload, timeout=30)
+            if res.json().get("ok"):
+                return res.json()
+
         # Filtrar solo URLs válidas de imágenes de Twitter
         imagenes_validas = [img for img in imagenes if "pbs.twimg.com/media" in img]
 
@@ -65,7 +78,7 @@ def enviar_a_telegram(mensaje, imagenes):
                 if res.json().get("ok"):
                     return res.json()
 
-        # Respaldo en texto plano si no hay imágenes o falló la multimedia
+        # Respaldo en texto plano si no hay multimedia
         url_tg = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {
             "chat_id": CHAT_ID, 
@@ -111,25 +124,34 @@ def verificar_actualizacion():
             description = item.find("description").text if item.find("description") is not None else ""
             guid = item.find("guid").text if item.find("guid") is not None else title
 
-            # Extracción exhaustiva de imágenes desde etiquetas HTML, atributos src y URLs directas en el texto
+            # Extracción de imágenes
             imagenes = []
-            
-            # Buscar en tags <img> dentro de la descripción HTML
             match_imgs = re.findall(r'<img[^>]+src="([^">]+)"', description)
             for img in match_imgs:
                 if "twimg.com" in img:
-                    # Limpiar sufijos de tamaño de Nitter si los trae (ej: :thumb, :small) para dejar la original
                     img_limpia = re.sub(r':[a-z]+$', '', img)
                     imagenes.append(img_limpia)
 
-            # Buscar cualquier enlace plano de pbs.twimg.com en todo el texto del feed
             match_links = re.findall(r'https?://pbs\.twimg\.com/media/[^\s"\'\)<>]+', description + " " + title)
             for link in match_links:
                 link_limpio = re.sub(r':[a-z]+$', '', link)
                 imagenes.append(link_limpio)
 
-            # Eliminar duplicados manteniendo orden
             imagenes = list(dict.fromkeys(imagenes))
+
+            # Extracción de videos (enlaces directos .mp4 o etiquetas de video)
+            videos = []
+            match_vids = re.findall(r'https?://[^\s"\'\)<>]+?\.mp4[^\s"\'\)<>]*', description + " " + title)
+            for v in match_vids:
+                videos.append(v)
+            
+            # Buscar también en atributos de video o enclosures si existen
+            for enclosure in item.findall("enclosure"):
+                enc_url = enclosure.get("url", "")
+                if ".mp4" in enc_url or "video" in enclosure.get("type", ""):
+                    videos.append(enc_url)
+
+            videos = list(dict.fromkeys(videos))
 
             # Limpieza del texto del tuit
             texto_limpio = re.sub(r'<[^>]+>', '', title)
@@ -146,9 +168,9 @@ def verificar_actualizacion():
             guardar_memoria(firma_id)
             mensaje = f"🦁⚾ <b>{texto_limpio}</b>"
 
-            res = enviar_a_telegram(mensaje, imagenes)
+            res = enviar_a_telegram(mensaje, imagenes, videos)
             if res.get("ok"):
-                print(f"¡Publicación con multimedia enviada! Hash: {firma_id}", flush=True)
+                print(f"¡Publicación multimedia enviada con éxito! Hash: {firma_id}", flush=True)
             else:
                 print(f"Respuesta de Telegram: {res}", flush=True)
 
@@ -158,7 +180,7 @@ def verificar_actualizacion():
         print("Error parseando XML: " + str(err_xml), flush=True)
 
 if __name__ == "__main__":
-    print("Iniciando bot continuo autónomo con soporte multimedia optimizado...", flush=True)
+    print("Iniciando bot continuo autónomo con soporte de fotos y videos...", flush=True)
     while True:
         try:
             verificar_actualizacion()
