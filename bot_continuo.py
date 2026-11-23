@@ -40,13 +40,15 @@ def limpiar_html(raw_html):
     return texto.strip()
 
 
-def extraer_imagenes(raw_html):
+def extraer_imagenes(raw_html, base_dominio="https://nitter.jaydenha.uk"):
     if not raw_html:
         return []
     urls = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', raw_html, flags=re.IGNORECASE)
     limpias = []
     for u in urls:
-        u_limpia = html.unescape(u)
+        u_limpia = html.unescape(u).strip()
+        if u_limpia.startswith("/"):
+            u_limpia = f"{base_dominio.rstrip('/')}{u_limpia}"
         if "profile_images" not in u_limpia and u_limpia not in limpias:
             limpias.append(u_limpia)
     return limpias
@@ -96,10 +98,12 @@ def enviar_a_telegram(mensaje, imagenes):
 
 def verificar_actualizacion():
     instancias_rss = [
-        f"https://nitter.netbub.com/{X_USERNAME}/rss"
+        f"https://nitter.jaydenha.uk/{X_USERNAME}/rss",
+        f"https://nitter.netbub.com/{X_USERNAME}/rss",
     ]
 
     contenido_xml = None
+    dominio_activo = "https://nitter.jaydenha.uk"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
     for url in instancias_rss:
@@ -108,6 +112,7 @@ def verificar_actualizacion():
             print(f"Consultando {url} -> status {res.status_code}, len {len(res.text)}", flush=True)
             if res.status_code == 200 and ("<rss" in res.text or "<feed" in res.text):
                 contenido_xml = res.text
+                dominio_activo = url.split(f"/{X_USERNAME}/rss")[0]
                 break
         except Exception as e:
             print(f"Error consultando {url}: {e}", flush=True)
@@ -136,7 +141,7 @@ def verificar_actualizacion():
         title = limpiar_html(item.findtext("title") or "")
         desc_raw = item.findtext("description") or ""
         desc_texto = limpiar_html(desc_raw)
-        imagenes = extraer_imagenes(desc_raw)
+        imagenes = extraer_imagenes(desc_raw, dominio_activo)
 
         cuerpo = desc_texto if len(desc_texto) >= len(title) else title
         base_id = guid or link or cuerpo
