@@ -1,9 +1,11 @@
 import hashlib
 import html
+import io
 import os
 import re
 import time
 import xml.etree.ElementTree as ET
+from urllib.parse import urljoin
 import requests
 
 X_USERNAME = os.getenv("X_USERNAME", "leones_cbbc")
@@ -47,14 +49,44 @@ def extraer_imagenes(raw_html, base_dominio="https://nitter.jaydenha.uk"):
     limpias = []
     for u in urls:
         u_limpia = html.unescape(u).strip()
-        if u_limpia.startswith("/"):
-            u_limpia = f"{base_dominio.rstrip('/')}{u_limpia}"
+        if not u_limpia:
+            continue
+        if u_limpia.startswith("//"):
+            u_limpia = "https:" + u_limpia
+        elif not u_limpia.startswith("http"):
+            u_limpia = urljoin(base_dominio.rstrip("/") + "/", u_limpia.lstrip("/"))
         if "profile_images" not in u_limpia and u_limpia not in limpias:
             limpias.append(u_limpia)
     return limpias
 
 
-def enviar_a_telegram(mensaje, imagenes):
+def descargar_imagen_bytes(foto_url, headers):
+    try:
+        resp = requests.get(foto_url, headers=headers, timeout=15)
+        if resp.status_code != 200 or not resp.content:
+            print(f"Aviso descarga imagen status {resp.status_code}: {foto_url}", flush=True)
+            return None, None
+
+        content_type = (resp.headers.get("Content-Type") or "").lower()
+        if "text/html" in content_type or resp.content[:15].lstrip().startswith(b"<!DOCTYPE") or resp.content[:5].lstrip().startswith(b"<html"):
+            print(f"Aviso imagen devolvió HTML en lugar de archivo: {foto_url}", flush=True)
+            return None, None
+
+        ext = "jpg"
+        if "png" in content_type:
+            ext = "png"
+        elif "webp" in content_type:
+            ext = "webp"
+        elif "gif" in content_type:
+            ext = "gif"
+
+        return io.BytesIO(resp.content), f"imagen.{ext}"
+    except Exception as e:
+        print(f"Error descargando imagen {foto_url}: {e}", flush=True)
+        return None, None
+
+
+def enviar_a_telegram(mensaje, imagenes, headers):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("Error: Faltan TELEGRAM_BOT_TOKEN o CHAT_ID en variables de entorno.", flush=True)
         return False
@@ -65,7 +97,25 @@ def enviar_a_telegram(mensaje, imagenes):
         if imagenes:
             foto_url = imagenes[0]
             caption = mensaje[:1024]
-            res = requests.post(
+            img_buffer, nombre_archivo = descargar_imagen_bytes(foto_url, headers)
+
+            if img_buffer and nombre_archivo:
+                res = requests.post(
+                    f"{base_url}/sendPhoto",
+                    data={
+                        "chat_id": TELEGRAM_CHAT_ID,
+                        "caption": caption,
+                    },
+                    files={
+                        "photo": (nombre_archivo, img_buffer),
+                    },
+                    timeout=25,
+                )
+                if res.status_code == 200:
+                    return True
+                print(f"Aviso sendPhoto (archivo) status {res.status_code}: {res.text}", flush=True)
+
+            res_url = requests.post(
                 f"{base_url}/sendPhoto",
                 data={
                     "chat_id": TELEGRAM_CHAT_ID,
@@ -74,9 +124,9 @@ def enviar_a_telegram(mensaje, imagenes):
                 },
                 timeout=20,
             )
-            if res.status_code == 200:
+            if res_url.status_code == 200:
                 return True
-            print(f"Aviso sendPhoto status {res.status_code}: {res.text}", flush=True)
+            print(f"Aviso sendPhoto (URL) status {res_url.status_code}: {res_url.text}", flush=True)
 
         res_msg = requests.post(
             f"{base_url}/sendMessage",
@@ -104,7 +154,10 @@ def verificar_actualizacion():
 
     contenido_xml = None
     dominio_activo = "https://nitter.jaydenha.uk"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Referer": "https://nitter.jaydenha.uk/",
+    }
 
     for url in instancias_rss:
         try:
@@ -113,6 +166,7 @@ def verificar_actualizacion():
             if res.status_code == 200 and ("<rss" in res.text or "<feed" in res.text):
                 contenido_xml = res.text
                 dominio_activo = url.split(f"/{X_USERNAME}/rss")[0]
+                headers["Referer"] = dominio_activo + "/"
                 break
         except Exception as e:
             print(f"Error consultando {url}: {e}", flush=True)
@@ -153,7 +207,7 @@ def verificar_actualizacion():
             continue
 
         mensaje = f"🦁⚾ *Leones del Caracas* (@{X_USERNAME})\n\n{cuerpo}".replace("*", "")
-        enviado = enviar_a_telegram(mensaje, imagenes)
+        enviado = enviar_a_telegram(mensaje, imagenes, headers)
         if enviado:
             guardar_hash(item_hash)
             memoria.add(item_hash)
