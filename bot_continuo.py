@@ -1,9 +1,6 @@
 def verificar_actualizacion():
     instancias_rss = [
-        f"https://xcancel.com/{X_USERNAME}/rss",
-        f"https://nitter.poast.org/{X_USERNAME}/rss",
-        f"https://nitter.net/{X_USERNAME}/rss",
-        f"https://nitter.privacydev.net/{X_USERNAME}/rss"
+        f"https://nitter.netbub.com/leones_cbbc/rss"
     ]
     
     contenido_xml = None
