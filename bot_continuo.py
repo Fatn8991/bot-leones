@@ -167,4 +167,5 @@ def main():
         time.sleep(INTERVALO_SEGUNDOS)
 
 
-if
+if __name__ == "__main__":
+    main()
