@@ -8,7 +8,7 @@ import requests
 
 X_USERNAME = os.getenv("X_USERNAME", "leones_cbbc")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+TELEGRAM_CHAT_ID = os.getenv("CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID", "")
 MEMORIA_FILE = "id_memoria.txt"
 INTERVALO_SEGUNDOS = 10
 
@@ -56,7 +56,7 @@ def extraer_imagenes(raw_html, base_dominio="https://nitter.jaydenha.uk"):
 
 def enviar_a_telegram(mensaje, imagenes):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("Error: Faltan TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID en variables de entorno.", flush=True)
+        print("Error: Faltan TELEGRAM_BOT_TOKEN o CHAT_ID en variables de entorno.", flush=True)
         return False
 
     base_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
