@@ -42,7 +42,7 @@ def limpiar_html(raw_html):
     return texto.strip()
 
 
-def extraer_imagenes(raw_html, base_dominio="https://nitter.jaydenha.uk"):
+def extraer_imagenes(raw_html, base_dominio="https://nitter.mie.foundation"):
     if not raw_html:
         return []
     urls = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', raw_html, flags=re.IGNORECASE)
@@ -68,7 +68,11 @@ def descargar_imagen_bytes(foto_url, headers):
             return None, None
 
         content_type = (resp.headers.get("Content-Type") or "").lower()
-        if "text/html" in content_type or resp.content[:15].lstrip().startswith(b"<!DOCTYPE") or resp.content[:5].lstrip().startswith(b"<html"):
+        if (
+            "text/html" in content_type
+            or resp.content[:15].lstrip().startswith(b"<!DOCTYPE")
+            or resp.content[:5].lstrip().startswith(b"<html")
+        ):
             print(f"Aviso imagen devolvió HTML en lugar de archivo: {foto_url}", flush=True)
             return None, None
 
@@ -148,15 +152,16 @@ def enviar_a_telegram(mensaje, imagenes, headers):
 
 def verificar_actualizacion():
     instancias_rss = [
-        f"https://nitter.jaydenha.uk/{X_USERNAME}/rss",
+        f"https://nitter.mie.foundation/{X_USERNAME}/rss",
+        f"https://nitter.kareem.one/{X_USERNAME}/rss",
         f"https://nitter.netbub.com/{X_USERNAME}/rss",
     ]
 
     contenido_xml = None
-    dominio_activo = "https://nitter.jaydenha.uk"
+    dominio_activo = "https://nitter.mie.foundation"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Referer": "https://nitter.jaydenha.uk/",
+        "Referer": "https://nitter.mie.foundation/",
     }
 
     for url in instancias_rss:
